@@ -1,0 +1,46 @@
+{
+    "workspace": {
+        "background": {
+            "r": 195,
+            "g": 195,
+            "b": 195
+        },
+        "camera": {
+            "position": {
+                "x": 20,
+                "y": -10,
+                "z": 20
+            },
+            "angle": {
+                "yaw": 45,
+                "pitch": -45,
+                "roll": 0
+            }
+        }
+    },
+    "polygon": {
+        "image_name": "KiberdromVisualizator/map/map.jpg",
+        "scale": {
+            "x": 12,
+            "y": 12,
+            "z": 1
+        }
+    },
+    "objects": {
+        "path": "KiberdromVisualizator/objects",
+        "color": {
+            "r": 86,
+            "g": 86,
+            "b": 86
+        },
+        "scale": {
+            "x": 0.01,
+            "y": 0.01,
+            "z": 0.01
+        }
+    },
+    "server": {
+        "ip": "localhost",
+        "port": 8080
+    }
+}

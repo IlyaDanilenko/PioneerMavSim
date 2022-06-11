@@ -29,8 +29,8 @@ class MavlinkUnitModel():
         delta_x = x - self.x
         delta_y = y - self.y
         delta_z = z - self.z
-        l = sqrt(delta_x**2 + delta_y**2 + delta_z**2)
-        for _ in range(int(l*100) - 1):
+        l = sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
+        for _ in range(int(l * 100) - 1):
             self.x += delta_x / l * 0.01
             self.y += delta_y / l * 0.01
             self.z += delta_z / l * 0.01
@@ -41,7 +41,7 @@ class MavlinkUnitModel():
         pri = 1
         if angle < 0.0:
             pri = -1
-        for new_angle in range(old_angle, old_angle + int(angle / 2), pri):
+        for new_angle in range(old_angle, old_angle + int(angle), pri):
             self.yaw = new_angle
             sleep(0.03)
 
@@ -62,6 +62,11 @@ class MavlinkUnitModel():
         self.takeoff_status = False
         self.preflight_status = False
         self.inprogress = False
+
+    def disarm(self):
+        self.z = 0.0
+        self.preflight_status = False
+        self.takeoff_status = False
 
 class MavlinkUnit:
     def __heartbeat_send(self):
@@ -119,9 +124,13 @@ class MavlinkUnit:
                 if msg is not None:
                     # print(msg)
                     if msg.get_type() == "COMMAND_LONG":
-                        if msg.command == 400: # preflight
-                            self.__command_ack_send(msg.command)
-                            self.model.preflight_status = True
+                        if msg.command == 400: # preflight and disarm
+                            if not self.model.preflight_status:
+                                self.__command_ack_send(msg.command)
+                                self.model.preflight_status = True
+                            else:
+                                self.model.disarm()
+                                self.__command_ack_send(msg.command)
                         elif msg.command == 22: # takeoff
                             if not self.model.takeoff_status:
                                 if not self.model.inprogress:
@@ -301,7 +310,7 @@ class SimulationWindow(QMainWindow):
         ip = ""
         port = 0
         while True:
-            text, ok = QInputDialog.getText(self, 'Input Dialog', 'Введите ip коптера (ip:порт)')
+            text, ok = QInputDialog.getText(self, 'Добавить коптер', 'Введите ip коптера (ip:порт)')
             if ok:
                 count = text.count(':')
                 if count == 1:
@@ -309,6 +318,8 @@ class SimulationWindow(QMainWindow):
                     if port.isdigit() and len(ip) > 0:
                         port = int(port)
                         break
+            else:
+                return
         self.menu.add(ip, port)
         self.drone_manager.add_server(ip, port)
 

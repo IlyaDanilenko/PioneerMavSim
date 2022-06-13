@@ -242,8 +242,7 @@ class DroneManager():
         self.__run = False
 
 class MenuWidget(QWidget):
-    def __init__(self, add_func, sim_func, escape_callback):
-        self.__escape_callback = escape_callback
+    def __init__(self, add_func, sim_func):
         super().__init__()
 
         self.main_layout = QGridLayout(self)
@@ -288,6 +287,7 @@ class SimWidget(VisWidget):
 class SimulationWindow(QMainWindow):
     def __init__(self, path):
         super().__init__()
+        self.setWindowTitle("PioneerMavSim")
 
         self.settings = SettingsManager()
         self.settings.load(path)
@@ -304,7 +304,7 @@ class SimulationWindow(QMainWindow):
         self.world_widget.hide()
         self.world_widget.setGeometry(0,0, self.width(), self.height())
 
-        self.menu = MenuWidget(self.__add_func, self.__start_sim, self.__back_to_menu)
+        self.menu = MenuWidget(self.__add_func, self.__start_sim)
         self.menu.show()
 
         widgets.addWidget(self.menu)

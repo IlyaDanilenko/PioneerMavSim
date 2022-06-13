@@ -8,6 +8,8 @@ from threading import Thread
 from time import sleep, time
 from math import sqrt
 
+MOVE_DELAY = 0.015
+
 class MavlinkUnitModel():
     def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0):
         self.x = x
@@ -34,7 +36,7 @@ class MavlinkUnitModel():
             self.x += delta_x / l * 0.01
             self.y += delta_y / l * 0.01
             self.z += delta_z / l * 0.01
-            sleep(0.03)
+            sleep(MOVE_DELAY)
 
     def update_yaw(self, angle):
         old_angle = int(self.yaw)
@@ -43,22 +45,21 @@ class MavlinkUnitModel():
             pri = -1
         for new_angle in range(old_angle, old_angle + int(angle), pri):
             self.yaw = new_angle
-            sleep(0.03)
+            sleep(MOVE_DELAY)
 
     def takeoff(self):
         self.inprogress = True
         for _ in range(0, 200):
             self.z += 0.01
-            sleep(0.03)
+            sleep(MOVE_DELAY)
         self.takeoff_status = True
         self.inprogress = False
 
     def landing(self):
         self.inprogress = True
-        if self.takeoff_status:
-            for _ in range(int(self.z * 100), 0, -1):
-                self.z -= 0.01
-                sleep(0.05)
+        for _ in range(int(self.z * 100), 0, -1):
+            self.z -= 0.01
+            sleep(MOVE_DELAY)
         self.takeoff_status = False
         self.preflight_status = False
         self.inprogress = False
@@ -105,6 +106,12 @@ class MavlinkUnit:
             result = common.MAV_RESULT_IN_PROGRESS
         )
 
+    def __command_denied_send(self, command):
+        self.master.mav.command_ack_send(
+            command = command,
+            result = common.MAV_RESULT_DENIED
+        )
+
     def __go_to_point_target(self, x, y, z, yaw):
         self.model.inprogress = True
         self.model.set_pos(x, y, z, yaw)
@@ -137,10 +144,15 @@ class MavlinkUnit:
                                     self.__command_ack_send(msg.command)
                                     Thread(target=self.model.takeoff).start()
                                 self.model.inprogress = False
+                            else:
+                                self.__command_denied_send(msg.command)
                         elif msg.command == 21: # landing
                             if not self.model.inprogress:
-                                self.__command_ack_send(msg.command)
-                                Thread(target=self.__landing_target).start()
+                                if self.model.takeoff_status:
+                                    self.__command_ack_send(msg.command)
+                                    Thread(target=self.__landing_target).start()
+                                else:
+                                    self.__command_denied_send(msg.command)
                     elif msg.get_type() == "SET_POSITION_TARGET_LOCAL_NED":
                         if not self.model.inprogress and self.model.check_pos(msg.x, msg.y, msg.z, msg.yaw):
                             Thread(target=self.__go_to_point_target, args=(msg.x, msg.y, msg.z, msg.yaw)).start()

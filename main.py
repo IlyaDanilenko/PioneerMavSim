@@ -217,7 +217,6 @@ class DroneManager():
 
         self.__run = False
 
-
     def add_server(self, hostname, port):
         self.mavlink_servers.append(MavlinkUnit(hostname, port))
         self.visualization.add_model('drone', (0, 0, 0), 0)
@@ -274,10 +273,6 @@ class MenuWidget(QWidget):
     def add(self, ip, port):
         text = f"IP: {ip}, PORT: {port}"
         self.list.addItem(text)
-
-    def keyReleaseEvent(self, event):
-        if event.key() == Qt.Key_Escape:
-            self.__escape_callback()
 
 class SimWidget(VisWidget):
     def __init__(self, world, main, server, escape_callback):
@@ -339,6 +334,8 @@ class SimulationWindow(QMainWindow):
         self.drone_manager.start()
         self.menu.hide()
         self.world_widget.show()
+        self.menu.clearFocus()
+        self.world_widget.setFocus()
 
     def closeEvent(self, event):
         self.drone_manager.close()
@@ -349,6 +346,8 @@ class SimulationWindow(QMainWindow):
         self.drone_manager.close()
         self.world_widget.hide()
         self.menu.show()
+        self.world_widget.clearFocus()
+        self.menu.setFocus()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

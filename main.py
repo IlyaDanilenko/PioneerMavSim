@@ -1,9 +1,10 @@
-import sys, os
+import sys, json
 from KiberdromVisualizator.main import SettingsManager, VisWidget, VisualizationWorld
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget, QHBoxLayout, QVBoxLayout
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QLabel, QLineEdit, QMessageBox
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import common
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont
 from threading import Thread
 from time import sleep, time
 from math import sqrt
@@ -16,15 +17,24 @@ class SimulationSettingManager(SettingsManager):
     def __init__(self):
         self.simulation = None
         self.__raw_data = None
+        self.__path = None
         super().__init__()
 
     def load(self, path):
+        self.__path = path
         self.__raw_data = super().load(path)
         self.simulation = SimulationSettings(self.__raw_data['simulation'])
         return self.__raw_data
 
     def __dict__(self):
         return self.__raw_data
+
+    def update_from_dict(self, data_dict):
+        self.__raw_data = data_dict
+
+    def write(self):
+        with open(self.__path, 'w') as f:
+            json.dump(self.__raw_data, f)
 
 class MavlinkUnitModel():
     def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0, speed = 60):
@@ -269,7 +279,7 @@ class DroneManager():
         self.__run = False
 
 class MenuWidget(QWidget):
-    def __init__(self, add_func, sim_func):
+    def __init__(self, add_func, sim_func, set_func):
         super().__init__()
 
         self.main_layout = QGridLayout(self)
@@ -285,10 +295,15 @@ class MenuWidget(QWidget):
         self.sim_button.setText("Включить симуляцию")
         self.sim_button.clicked.connect(sim_func)
 
+        self.set_button = QPushButton(self)
+        self.set_button.setText("Настройки")
+        self.set_button.clicked.connect(set_func)
+
         buttons_group = QWidget(self)
         buttons_group_layout = QGridLayout(self)
-        buttons_group_layout.addWidget(self.add_button, 0, 0)
-        buttons_group_layout.addWidget(self.sim_button, 0, 1)
+        buttons_group_layout.addWidget(self.set_button, 0, 0)
+        buttons_group_layout.addWidget(self.add_button, 0, 1)
+        buttons_group_layout.addWidget(self.sim_button, 0, 2)
         buttons_group.setLayout(buttons_group_layout)
 
         self.main_layout.addWidget(self.list, 0, 0)
@@ -368,6 +383,113 @@ class SimWidget(QWidget):
         self.vis_widget.world.camera.setPos(-self.vis_widget.world.settings.polygon.scale.get_z() * 1.5, -self.vis_widget.world.settings.polygon.scale.get_z() * 1.5, self.vis_widget.world.settings.polygon.scale.get_y() * 1.5)
         self.vis_widget.world.camera.setHpr(-45, -45, 0)
 
+class SettingsMenuItemWidget(QWidget):
+    def __init__(self, name, data):
+        self.name = name
+        self.__data = data
+        self.__inputs = []
+        super().__init__()
+
+        self.setContentsMargins(0, 0, 0, 0)
+
+        self.main_layout = QVBoxLayout(self)
+
+        self._add_param(self.__data)
+                
+        self.setLayout(self.main_layout)
+
+    def _add_param(self, data_dict, lavel = 1):
+        for key in data_dict:
+            font = QFont("Times", 24 // lavel)
+            label = QLabel(self)
+            label.setText(key)
+            label.setFont(font)
+            if type(data_dict[key]) == dict:
+                self.main_layout.addWidget(label)
+                self._add_param(data_dict[key], lavel + 1)
+            else:
+                widget = QWidget(self)
+                widget_layout = None
+                widget_layout = QHBoxLayout(widget)
+                widget_layout.setContentsMargins(0, 0, 0, 0)
+                edit = QLineEdit(self)
+                edit.setText(str(data_dict[key]))
+                self.__inputs.append(edit)
+                widget_layout.addWidget(label)
+                widget_layout.addWidget(edit, 1)
+                widget.setLayout(widget_layout)
+                self.main_layout.addWidget(widget)
+
+    def get_data_dict(self, data_dict=None, inputs=None):
+        if inputs is None:
+            inputs = []
+            for edit in self.__inputs:
+                text = edit.text()
+                if text.replace('-', '').isdigit():
+                        inputs.append(int(text))
+                else:
+                    try:
+                        inputs.append(float(text))
+                    except:
+                        inputs.append(text)
+        if data_dict is None:
+            data_dict = self.__data
+        for key in data_dict:
+            if type(data_dict[key]) == dict:
+                data_dict[key] = self.get_data_dict(data_dict[key], inputs)
+            else:
+                data_dict[key] = inputs.pop(0)
+        return data_dict
+
+class SettingsMenuWidget(QWidget):
+    def __init__(self, settings, escape_callback):
+        self.settings = settings
+        self.__escape_callback = escape_callback
+        self.__widgets = []
+        super().__init__()
+
+        self.tab_widget = QTabWidget(self)
+        self.tab_widget.setContentsMargins(0, 0, 0, 0)
+
+        self.ok_button = QPushButton(self)
+        self.ok_button.setText("Применить")
+        self.ok_button.clicked.connect(self.ok_button_click)
+
+        self.cancel_button = QPushButton(self)
+        self.cancel_button.setText("Отменить")
+        self.cancel_button.clicked.connect(self.__escape_callback)
+
+        buttons_group = QWidget(self)
+        buttons_group_layout = QHBoxLayout(self)
+        buttons_group_layout.setContentsMargins(5, 10, 5, 5)
+        buttons_group_layout.addWidget(self.cancel_button)
+        buttons_group_layout.addWidget(self.ok_button)
+        buttons_group.setLayout(buttons_group_layout)
+
+        for item in self.settings.__dict__().items():
+            self.__widgets.append(SettingsMenuItemWidget(*item))
+            self.tab_widget.addTab(self.__widgets[-1], item[0])
+
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.addWidget(self.tab_widget, 1)
+        self.main_layout.addWidget(buttons_group)
+        self.setLayout(self.main_layout)
+
+    def ok_button_click(self):
+        new_dict = {}
+        for element in self.__widgets:
+            new_dict[element.name] = element.get_data_dict()
+
+        self.settings.update_from_dict(new_dict)
+        QMessageBox.warning(self, "Внимание!", "Настройки будут применены только при следующем запуске")
+        self.settings.write()
+        self.__escape_callback()
+
+    def keyReleaseEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.__escape_callback()
+
 class SimulationWindow(QMainWindow):
     def __init__(self, path):
         super().__init__()
@@ -385,18 +507,24 @@ class SimulationWindow(QMainWindow):
 
         self.world_widget = SimWidget(self.world, self, self.drone_manager, self.__back_to_menu)
         self.world_widget.hide()
-        self.world_widget.setGeometry(0,0, self.width(), self.height())
+        self.world_widget.setGeometry(0, 0, self.width(), self.height())
 
-        self.menu = MenuWidget(self.__add_func, self.__start_sim)
+        self.settings_menu = SettingsMenuWidget(self.settings, self.__back_to_menu)
+        self.settings_menu.setGeometry(0, 0, self.width(), self.height())
+        self.settings_menu.hide()
+
+        self.menu = MenuWidget(self.__add_func, self.__start_sim, self.__open_setting)
         self.menu.show()
 
         widgets.addWidget(self.menu)
         widgets.addWidget(self.world_widget)
+        widgets.addWidget(self.settings_menu)
 
         self.setCentralWidget(widgets)
 
     def resizeEvent(self, event):
         self.world_widget.setGeometry(0,0, self.width(), self.height())
+        self.settings_menu.setGeometry(0, 0, self.width(), self.height())
         super().resizeEvent(event)
 
     def __add_func(self):
@@ -424,6 +552,12 @@ class SimulationWindow(QMainWindow):
         self.menu.clearFocus()
         self.world_widget.setFocus()
 
+    def __open_setting(self):
+        self.menu.hide()
+        self.menu.clearFocus()
+        self.settings_menu.show()
+        self.settings_menu.setFocus()
+
     def closeEvent(self, event):
         self.drone_manager.close()
         super().closeEvent(event)
@@ -432,7 +566,9 @@ class SimulationWindow(QMainWindow):
         self.world.reset_camera()
         self.drone_manager.close()
         self.world_widget.hide()
+        self.settings_menu.hide()
         self.menu.show()
+        self.settings_menu.clearFocus()
         self.world_widget.clearFocus()
         self.menu.setFocus()
 

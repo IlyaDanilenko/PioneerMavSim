@@ -23,7 +23,7 @@
         "scale": {
             "x": 12,
             "y": 12,
-            "z": 1
+            "z": 12
         }
     },
     "objects": {
@@ -39,8 +39,7 @@
             "z": 0.01
         }
     },
-    "server": {
-        "ip": "localhost",
-        "port": 8080
+    "simulation": {
+        "speed": 60
     }
 }

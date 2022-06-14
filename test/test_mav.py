@@ -13,7 +13,7 @@ while not pioneer.point_reached(True):
     lps = pioneer.get_local_position_lps()
     if lps is not None:
         print(lps)
-pioneer.go_to_local_point(2, 2, 2, yaw = 90)
+pioneer.go_to_local_point(8, 8, 2, yaw = 90)
 while not pioneer.point_reached(True):
     lps = pioneer.get_local_position_lps()
     if lps is not None:

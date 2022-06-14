@@ -1,6 +1,6 @@
 import sys, os
 from KiberdromVisualizator.main import SettingsManager, VisWidget, VisualizationWorld
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget, QHBoxLayout, QVBoxLayout
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import common
 from PyQt5.QtCore import Qt
@@ -8,10 +8,26 @@ from threading import Thread
 from time import sleep, time
 from math import sqrt
 
-MOVE_DELAY = 0.015
+class SimulationSettings:
+    def __init__(self, simulation):
+        self.speed = simulation['speed']
+
+class SimulationSettingManager(SettingsManager):
+    def __init__(self):
+        self.simulation = None
+        self.__raw_data = None
+        super().__init__()
+
+    def load(self, path):
+        self.__raw_data = super().load(path)
+        self.simulation = SimulationSettings(self.__raw_data['simulation'])
+        return self.__raw_data
+
+    def __dict__(self):
+        return self.__raw_data
 
 class MavlinkUnitModel():
-    def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0):
+    def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0, speed = 60):
         self.x = x
         self.y = y
         self.z = z
@@ -20,6 +36,7 @@ class MavlinkUnitModel():
         self.preflight_status = False
         self.inprogress = False
         self.__last_position = (x, y, z, yaw)
+        self.speed = speed
 
     def check_pos(self, x, y, z, yaw):
         return (x, y, z, yaw) != self.__last_position
@@ -36,7 +53,7 @@ class MavlinkUnitModel():
             self.x += delta_x / l * 0.01
             self.y += delta_y / l * 0.01
             self.z += delta_z / l * 0.01
-            sleep(MOVE_DELAY)
+            sleep(1.0 / self.speed)
 
     def update_yaw(self, angle):
         old_angle = int(self.yaw)
@@ -45,13 +62,13 @@ class MavlinkUnitModel():
             pri = -1
         for new_angle in range(old_angle, old_angle + int(angle), pri):
             self.yaw = new_angle
-            sleep(MOVE_DELAY)
+            sleep(1.0 / self.speed)
 
     def takeoff(self):
         self.inprogress = True
         for _ in range(0, 200):
             self.z += 0.01
-            sleep(MOVE_DELAY)
+            sleep(1.0 / self.speed)
         self.takeoff_status = True
         self.inprogress = False
 
@@ -59,7 +76,7 @@ class MavlinkUnitModel():
         self.inprogress = True
         for _ in range(int(self.z * 100), 0, -1):
             self.z -= 0.01
-            sleep(MOVE_DELAY)
+            sleep(1.0 / self.speed)
         self.takeoff_status = False
         self.preflight_status = False
         self.inprogress = False
@@ -70,6 +87,19 @@ class MavlinkUnitModel():
         self.takeoff_status = False
 
 class MavlinkUnit:
+    def __init__(self, hostname='localhost', port=8001, heartbeat_rate = 1/4, speed = 60):
+        self.hostname = hostname
+        self.online = False
+        self.port = port
+        self.heartbeat_rate = heartbeat_rate
+        self.__item = 0
+        self.model = None
+        self.master = None
+        self.__heartbeat_thread = None
+        self.__status_thread = None
+        self.__message_thread = None
+        self.__speed = speed
+
     def __heartbeat_send(self):
         self.master.mav.heartbeat_send(
             type = mavutil.mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
@@ -179,20 +209,18 @@ class MavlinkUnit:
             print(f'{self.hostname}:{self.port} offline')
         self.master.close()
 
-    def __init__(self, hostname='localhost', port=8001, heartbeat_rate = 1/4):
-        self.hostname = hostname
-        self.online = False
-        self.port = port
-        self.heartbeat_rate = heartbeat_rate
-        self.__item = 0
-        self.model = None
-        self.master = None
-        self.__heartbeat_thread = None
-        self.__status_thread = None
-        self.__message_thread = None
+    def set_speed(self, speed):
+        if self.model is not None:
+            self.model.speed = speed
+
+    def get_position(self):
+        return self.model.x, self.model.y, self.model.z
+
+    def get_yaw(self):
+        return self.model.yaw
 
     def start(self):
-        self.model = MavlinkUnitModel()
+        self.model = MavlinkUnitModel(speed = self.__speed)
         self.master = mavutil.mavlink_connection(f'udpin:{self.hostname}:{self.port}', source_component=26, dialect = 'common')
         self.online = True
 
@@ -218,7 +246,7 @@ class DroneManager():
         self.__run = False
 
     def add_server(self, hostname, port):
-        self.mavlink_servers.append(MavlinkUnit(hostname, port))
+        self.mavlink_servers.append(MavlinkUnit(hostname, port, speed=self.visualization.settings.simulation.speed))
         self.visualization.add_model('drone', (0, 0, 0), 0)
 
     def __target(self):
@@ -227,8 +255,7 @@ class DroneManager():
 
         while self.__run:
             for index in range(len(self.mavlink_servers)):
-                model = self.mavlink_servers[index].model
-                self.visualization.change_model_position(index, (model.x, model.y, model.z), model.yaw)
+                self.visualization.change_model_position(index, self.mavlink_servers[index].get_position() , self.mavlink_servers[index].get_yaw())
             sleep(self.__update_time)
 
     def start(self):
@@ -273,34 +300,90 @@ class MenuWidget(QWidget):
         text = f"IP: {ip}, PORT: {port}"
         self.list.addItem(text)
 
-class SimWidget(VisWidget):
+class SimWidget(QWidget):
     def __init__(self, world, main, server, escape_callback):
         self.__escape_callback = escape_callback
-        super().__init__(world, main, server)
+        super().__init__()
+
+        self.vis_widget = VisWidget(world, main, server)
+        self.vis_widget.setContentsMargins(0, 0, 0 , 100)
+        self.vis_widget.close = self.__escape_callback
+
+        self.center_button = QPushButton(self)
+        self.center_button.setText("Центр сверху")
+        self.center_button.clicked.connect(self.__center_button_click)
+
+        self.right_down_button = QPushButton(self)
+        self.right_down_button.setText("Правый нижний угол")
+        self.right_down_button.clicked.connect(self.__right_down_button_click)
+
+        self.right_up_button = QPushButton(self)
+        self.right_up_button.setText("Правый верхний угол")
+        self.right_up_button.clicked.connect(self.__right_up_button_click)
+
+        self.left_up_button = QPushButton(self)
+        self.left_up_button.setText("Левый верхний угол")
+        self.left_up_button.clicked.connect(self.__left_up_button_click)
+
+        self.left_down_button = QPushButton(self)
+        self.left_down_button.setText("Левый нижний угол")
+        self.left_down_button.clicked.connect(self.__left_down_button_click)
+
+        buttons_group = QWidget(self)
+        buttons_group_layout = QHBoxLayout(self)
+        buttons_group_layout.setContentsMargins(5, 10, 5, 5)
+        buttons_group_layout.addWidget(self.center_button)
+        buttons_group_layout.addWidget(self.right_down_button)
+        buttons_group_layout.addWidget(self.right_up_button)
+        buttons_group_layout.addWidget(self.left_up_button)
+        buttons_group_layout.addWidget(self.left_down_button)
+        buttons_group.setLayout(buttons_group_layout)
+
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.addWidget(buttons_group)
+        self.main_layout.addWidget(self.vis_widget, 1)
+        self.setLayout(self.main_layout)
 
     def keyReleaseEvent(self, event):
-        if event.key() == Qt.Key_Escape:
-            self.__escape_callback()
-        else:
-            super().keyReleaseEvent(event)
+        self.vis_widget.keyReleaseEvent(event)
+
+    def __center_button_click(self):
+        self.vis_widget.world.camera.setPos(self.vis_widget.world.settings.polygon.scale.get_x(), self.vis_widget.world.settings.polygon.scale.get_z(), self.vis_widget.world.settings.polygon.scale.get_y() * 2.5)
+        self.vis_widget.world.camera.setHpr(0, -90, 0)
+
+    def __right_down_button_click(self):
+        self.vis_widget.world.camera.setPos(self.vis_widget.world.settings.polygon.scale.get_x() * 3.5, -self.vis_widget.world.settings.polygon.scale.get_z() * 1.5, self.vis_widget.world.settings.polygon.scale.get_y() * 1.5)
+        self.vis_widget.world.camera.setHpr(45, -45, 0)
+
+    def __right_up_button_click(self):
+        self.vis_widget.world.camera.setPos(self.vis_widget.world.settings.polygon.scale.get_x() * 3.5, self.vis_widget.world.settings.polygon.scale.get_z() * 3.5, self.vis_widget.world.settings.polygon.scale.get_y() * 1.5)
+        self.vis_widget.world.camera.setHpr(135, -45, 0)
+
+    def __left_up_button_click(self):
+        self.vis_widget.world.camera.setPos(-self.vis_widget.world.settings.polygon.scale.get_z() * 1.5, self.vis_widget.world.settings.polygon.scale.get_z() * 3.5, self.vis_widget.world.settings.polygon.scale.get_y() * 1.5)
+        self.vis_widget.world.camera.setHpr(-135, -45, 0)
+
+    def __left_down_button_click(self):
+        self.vis_widget.world.camera.setPos(-self.vis_widget.world.settings.polygon.scale.get_z() * 1.5, -self.vis_widget.world.settings.polygon.scale.get_z() * 1.5, self.vis_widget.world.settings.polygon.scale.get_y() * 1.5)
+        self.vis_widget.world.camera.setHpr(-45, -45, 0)
 
 class SimulationWindow(QMainWindow):
     def __init__(self, path):
         super().__init__()
         self.setWindowTitle("PioneerMavSim")
 
-        self.settings = SettingsManager()
+        self.settings = SimulationSettingManager()
         self.settings.load(path)
 
         self.setGeometry(50, 50, 800, 600)
-        self.world = VisualizationWorld(self.settings)
+        self.world = VisualizationWorld(self.settings, axis = True)
 
         self.drone_manager = DroneManager(self.world)
 
         widgets = QStackedWidget(self)
 
         self.world_widget = SimWidget(self.world, self, self.drone_manager, self.__back_to_menu)
-        self.world_widget
         self.world_widget.hide()
         self.world_widget.setGeometry(0,0, self.width(), self.height())
 
@@ -311,6 +394,10 @@ class SimulationWindow(QMainWindow):
         widgets.addWidget(self.world_widget)
 
         self.setCentralWidget(widgets)
+
+    def resizeEvent(self, event):
+        self.world_widget.setGeometry(0,0, self.width(), self.height())
+        super().resizeEvent(event)
 
     def __add_func(self):
         count = 0
@@ -339,7 +426,7 @@ class SimulationWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.drone_manager.close()
-        super().__init__()
+        super().closeEvent(event)
 
     def __back_to_menu(self):
         self.world.reset_camera()

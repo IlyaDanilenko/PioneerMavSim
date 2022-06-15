@@ -19,7 +19,7 @@
         }
     },
     "polygon": {
-        "image_name": "KiberdromVisualizator/map/map.jpg",
+        "image_name": "map/grass.jpg",
         "scale": {
             "x": 12,
             "y": 12,

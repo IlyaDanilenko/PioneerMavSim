@@ -3,6 +3,7 @@ from time import sleep
 
 pioneer = Pioneer(method=2, pioneer_ip='localhost', pioneer_mavlink_port=8001)
 print("OKKK")
+pioneer.led_control(255, 255, 0, 0)
 pioneer.arm()
 sleep(2)
 pioneer.takeoff()

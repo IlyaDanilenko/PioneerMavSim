@@ -42,11 +42,16 @@ class MavlinkUnitModel():
         self.y = y
         self.z = z
         self.yaw = yaw
+        self.speed = speed
+        self.color = [0, 0, 0]
+
         self.takeoff_status = False
         self.preflight_status = False
         self.inprogress = False
         self.__last_position = (x, y, z, yaw)
-        self.speed = speed
+
+    def set_color(self, r = 0, g = 0, b = 0):
+        self.color = [r, g, b]
 
     def check_pos(self, x, y, z, yaw):
         return (x, y, z, yaw) != self.__last_position
@@ -193,6 +198,9 @@ class MavlinkUnit:
                                     Thread(target=self.__landing_target).start()
                                 else:
                                     self.__command_denied_send(msg.command)
+                        elif msg.command == 31010: # led control
+                            self.model.set_color(msg.param2, msg.param3, msg.param4)
+                            self.__command_ack_send(msg.command)
                     elif msg.get_type() == "SET_POSITION_TARGET_LOCAL_NED":
                         if not self.model.inprogress and self.model.check_pos(msg.x, msg.y, msg.z, msg.yaw):
                             Thread(target=self.__go_to_point_target, args=(msg.x, msg.y, msg.z, msg.yaw)).start()
@@ -222,6 +230,9 @@ class MavlinkUnit:
     def set_speed(self, speed):
         if self.model is not None:
             self.model.speed = speed
+
+    def get_led_color(self):
+        return self.model.color
 
     def get_position(self):
         return self.model.x, self.model.y, self.model.z
@@ -266,6 +277,12 @@ class DroneManager():
         while self.__run:
             for index in range(len(self.mavlink_servers)):
                 self.visualization.change_model_position(index, self.mavlink_servers[index].get_position() , self.mavlink_servers[index].get_yaw())
+                model_color = self.mavlink_servers[index].get_led_color()
+                if not any(model_color):
+                    self.visualization.change_model_color(index)
+                else:
+                    self.visualization.change_model_color(index, *model_color)
+
             sleep(self.__update_time)
 
     def start(self):

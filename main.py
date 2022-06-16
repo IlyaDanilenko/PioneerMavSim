@@ -361,6 +361,13 @@ class SimWidget(QWidget):
         self.left_down_button.setText("Левый нижний угол")
         self.left_down_button.clicked.connect(self.__left_down_button_click)
 
+        self.trajectory_button = QPushButton(self)
+        if world.settings.workspace.trajectory:
+            self.trajectory_button.setText("Скрыть траекторию")
+        else:
+            self.trajectory_button.setText("Показать траекторию")
+        self.trajectory_button.clicked.connect(self.__trajectories_button_click)
+
         buttons_group = QWidget(self)
         buttons_group_layout = QHBoxLayout(self)
         buttons_group_layout.setContentsMargins(5, 10, 5, 5)
@@ -369,6 +376,7 @@ class SimWidget(QWidget):
         buttons_group_layout.addWidget(self.right_up_button)
         buttons_group_layout.addWidget(self.left_up_button)
         buttons_group_layout.addWidget(self.left_down_button)
+        buttons_group_layout.addWidget(self.trajectory_button)
         buttons_group.setLayout(buttons_group_layout)
 
         self.main_layout = QVBoxLayout(self)
@@ -399,6 +407,14 @@ class SimWidget(QWidget):
     def __left_down_button_click(self):
         self.vis_widget.world.camera.setPos(-self.vis_widget.world.settings.polygon.scale.get_z() * 1.5, -self.vis_widget.world.settings.polygon.scale.get_z() * 1.5, self.vis_widget.world.settings.polygon.scale.get_y() * 1.5)
         self.vis_widget.world.camera.setHpr(-45, -45, 0)
+
+    def __trajectories_button_click(self):
+        visible = not self.vis_widget.world.get_trajectory_visible()
+        self.vis_widget.world.set_trajectory_visible(visible)
+        if visible:
+            self.trajectory_button.setText("Скрыть траекторию")
+        else:
+            self.trajectory_button.setText("Показать траекторию")
 
 class SettingsMenuItemWidget(QWidget):
     def __init__(self, name, data):
@@ -442,8 +458,12 @@ class SettingsMenuItemWidget(QWidget):
             inputs = []
             for edit in self.__inputs:
                 text = edit.text()
-                if text.replace('-', '').isdigit():
-                        inputs.append(int(text))
+                if text.lower() == "true":
+                    inputs.append(True)
+                elif text.lower() == "false":
+                    inputs.append(False)
+                elif text.replace('-', '').isdigit():
+                    inputs.append(int(text))
                 else:
                     try:
                         inputs.append(float(text))
@@ -516,7 +536,7 @@ class SimulationWindow(QMainWindow):
         self.settings.load(path)
 
         self.setGeometry(50, 50, 800, 600)
-        self.world = VisualizationWorld(self.settings, axis = True)
+        self.world = VisualizationWorld(self.settings)
 
         self.drone_manager = DroneManager(self.world)
 
@@ -563,6 +583,8 @@ class SimulationWindow(QMainWindow):
         self.drone_manager.add_server(ip, port)
 
     def __start_sim(self):
+        self.world.reset_camera()
+        self.world.reset_trajectories()
         self.drone_manager.start()
         self.menu.hide()
         self.world_widget.show()
@@ -580,7 +602,6 @@ class SimulationWindow(QMainWindow):
         super().closeEvent(event)
 
     def __back_to_menu(self):
-        self.world.reset_camera()
         self.drone_manager.close()
         self.world_widget.hide()
         self.settings_menu.hide()

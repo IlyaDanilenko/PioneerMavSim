@@ -1,5 +1,6 @@
 {
     "workspace": {
+        "axis": true,
         "background": {
             "r": 195,
             "g": 195,
@@ -15,6 +16,18 @@
                 "yaw": 45,
                 "pitch": -45,
                 "roll": 0
+            }
+        },
+        "trajectory":
+        {
+            "need": false,
+            "marker": "sphere",
+            "distance": 0.5,
+            "scale": 0.0005,
+            "color": {
+                "r": 240,
+                "g": 146,
+                "b": 0
             }
         }
     },

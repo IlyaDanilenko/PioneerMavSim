@@ -1,6 +1,6 @@
-[submodule "KiberdromVisualizator"]
-	path = KiberdromVisualizator
-	url = https://github.com/IlyaDanilenko/KiberdromVisualizator.git
 [submodule "test/gs_router"]
 	path = test/gs_router
 	url = https://github.com/GeoScan-Pioneer/gs_router.git
+[submodule "ObjectVisualizator"]
+	path = ObjectVisualizator
+	url = https://github.com/IlyaDanilenko/ObjectVisualizator.git

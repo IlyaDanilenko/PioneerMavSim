@@ -1,5 +1,5 @@
 import sys, json
-from KiberdromVisualizator.main import SettingsManager, VisWidget, VisualizationWorld
+from ObjectVisualizator.main import SettingsManager, VisWidget, VisualizationWorld
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QLabel, QLineEdit, QMessageBox
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import common

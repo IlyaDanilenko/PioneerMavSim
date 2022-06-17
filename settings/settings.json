@@ -1,6 +1,7 @@
 {
     "workspace": {
         "axis": true,
+        "sensitivity": 0.5,
         "background": {
             "r": 195,
             "g": 195,

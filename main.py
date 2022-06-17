@@ -1,6 +1,6 @@
 import sys, json
 from ObjectVisualizator.main import SettingsManager, VisWidget, VisualizationWorld
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QLabel, QLineEdit, QMessageBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QLabel, QLineEdit, QMessageBox, QScrollArea
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import common
 from PyQt5.QtCore import Qt
@@ -425,11 +425,22 @@ class SettingsMenuItemWidget(QWidget):
 
         self.setContentsMargins(0, 0, 0, 0)
 
-        self.main_layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        self.scroll_layout = QVBoxLayout(self)
+        self.scroll_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll_area = QScrollArea(self)
+        scroll_area.setContentsMargins(0, 0, 0, 0)
+
+        widget = QWidget(scroll_area)
+        widget.setLayout(self.scroll_layout)
+        widget.setContentsMargins(0, 0, 0, 0)
 
         self._add_param(self.__data)
+        scroll_area.setWidget(widget)
+        main_layout.addWidget(scroll_area)
                 
-        self.setLayout(self.main_layout)
+        self.setLayout(main_layout)
 
     def _add_param(self, data_dict, lavel = 1):
         for key in data_dict:
@@ -438,7 +449,7 @@ class SettingsMenuItemWidget(QWidget):
             label.setText(key)
             label.setFont(font)
             if type(data_dict[key]) == dict:
-                self.main_layout.addWidget(label)
+                self.scroll_layout.addWidget(label)
                 self._add_param(data_dict[key], lavel + 1)
             else:
                 widget = QWidget(self)
@@ -451,7 +462,7 @@ class SettingsMenuItemWidget(QWidget):
                 widget_layout.addWidget(label)
                 widget_layout.addWidget(edit, 1)
                 widget.setLayout(widget_layout)
-                self.main_layout.addWidget(widget)
+                self.scroll_layout.addWidget(widget)
 
     def get_data_dict(self, data_dict=None, inputs=None):
         if inputs is None:
@@ -535,7 +546,7 @@ class SimulationWindow(QMainWindow):
         self.settings = SimulationSettingManager()
         self.settings.load(path)
 
-        self.setGeometry(50, 50, 800, 600)
+        self.setGeometry(50, 50, 800, 800)
         self.world = VisualizationWorld(self.settings)
 
         self.drone_manager = DroneManager(self.world)

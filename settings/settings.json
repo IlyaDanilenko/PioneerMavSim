@@ -40,7 +40,7 @@
         }
     },
     "objects": {
-        "path": "KiberdromVisualizator/objects",
+        "path": "ObjectVisualizator/objects",
         "color": {
             "r": 86,
             "g": 86,

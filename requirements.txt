@@ -1,6 +1,6 @@
 python-socketio
 python-socketio[client]
-Panda3d==1.10.11
+Panda3D==1.10.11
 eventlet
 QPanda3D
 pymavlink

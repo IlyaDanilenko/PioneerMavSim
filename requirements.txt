@@ -1,7 +1,5 @@
-python-socketio
-python-socketio[client]
+wheel
 PyQt5==5.15.4
 Panda3D==1.10.11
-eventlet
 QPanda3D
 pymavlink

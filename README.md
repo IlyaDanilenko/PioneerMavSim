@@ -10,11 +10,11 @@ git clone https://github.com/IlyaDanilenko/PioneerMavSim.git
 ```
 2. Подтягиваем зависимости
 ```
+cd PioneerMavSim
 git submodule update --init
 ```
 3. Устанавливаем необходимые библиотеки Python
 ```
-cd PioneerMavSim
 pip install -r requirements.txt
 ```
 

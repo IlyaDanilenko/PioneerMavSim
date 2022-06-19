@@ -262,18 +262,15 @@ class DroneManager():
         self.mavlink_servers.append(MavlinkUnit(hostname, port, speed=self.visualization.settings.simulation.speed))
         self.visualization.add_model('drone', (0, 0, 0), 0)
 
-    def __target(self):
-        for server in self.mavlink_servers:
-            server.start()
-
+    def __target(self, index):
+        server = self.mavlink_servers[index]
         while self.__run:
-            for index in range(len(self.mavlink_servers)):
-                self.visualization.change_model_position(index, self.mavlink_servers[index].get_position() , self.mavlink_servers[index].get_yaw())
-                model_color = self.mavlink_servers[index].get_led_color()
-                if not any(model_color):
-                    self.visualization.change_model_color(index)
-                else:
-                    self.visualization.change_model_color(index, *model_color)
+            self.visualization.change_model_position(index, server.get_position() , server.get_yaw())
+            model_color = server.get_led_color()
+            if not any(model_color):
+                self.visualization.change_model_color(index)
+            else:
+                self.visualization.change_model_color(index, *model_color)
 
             sleep(self.__update_time)
 
@@ -287,7 +284,9 @@ class DroneManager():
     def start(self):
         if not self.__run:
             self.__run = True
-            Thread(target=self.__target).start()
+            for index in range(len(self.mavlink_servers)):
+                self.mavlink_servers[index].start()
+                Thread(target=self.__target, args=(index, )).start()
 
     def close(self):
         for server in self.mavlink_servers:

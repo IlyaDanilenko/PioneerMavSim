@@ -53,7 +53,7 @@ class MavlinkUnitModel():
     def set_color(self, r = 0, g = 0, b = 0):
         self.color = [r, g, b]
 
-    def check_pos(self, x, y, z, yaw):
+    def check_pos(self, x, y, z, yaw) -> bool:
         return (x, y, z, yaw) != self.__last_position
 
     def set_pos(self, x, y, z, yaw):
@@ -231,13 +231,13 @@ class MavlinkUnit:
         if self.model is not None:
             self.model.speed = speed
 
-    def get_led_color(self):
+    def get_led_color(self) -> list[int]:
         return self.model.color
 
-    def get_position(self):
+    def get_position(self) -> tuple[float, float, float]:
         return self.model.x, self.model.y, self.model.z
 
-    def get_yaw(self):
+    def get_yaw(self) -> float:
         return self.model.yaw
 
     def start(self):
@@ -285,7 +285,7 @@ class DroneManager():
 
             sleep(self.__update_time)
 
-    def get_servers_address(self) -> list:
+    def get_servers_address(self) -> list[tuple[str, int]]:
         address = []
         for server in self.mavlink_servers:
             address.append((server.hostname, server.port))

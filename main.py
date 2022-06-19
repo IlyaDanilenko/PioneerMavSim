@@ -110,8 +110,7 @@ class MavlinkUnit:
         self.__item = 0
         self.model = None
         self.master = None
-        self.__heartbeat_thread = None
-        self.__status_thread = None
+        self.__live_thread = None
         self.__message_thread = None
         self.__speed = speed
 
@@ -129,14 +128,11 @@ class MavlinkUnit:
         self.master.mav.srcComponent = 26
         self.master.mav.local_position_ned_send(int(time()), self.model.x, self.model.y, self.model.z, 0, 0, 0)
 
-    def __heartbeat_handler(self):
-        while self.online:
-            self.__heartbeat_send()
-            sleep(self.heartbeat_rate)
-
-    def __status_handler(self):
+    def __live_handler(self):
         while self.online:
             self.__status_send()
+            sleep(self.heartbeat_rate / 2)
+            self.__heartbeat_send()
             sleep(self.heartbeat_rate / 2)
 
     def __command_ack_send(self, command):
@@ -245,17 +241,13 @@ class MavlinkUnit:
         self.master = mavutil.mavlink_connection(f'udpin:{self.hostname}:{self.port}', source_component=26, dialect = 'common')
         self.online = True
 
-        self.__heartbeat_thread = Thread(target=self.__heartbeat_handler)
-        self.__heartbeat_thread.daemon = True
-
-        self.__status_thread = Thread(target=self.__status_handler)
-        self.__status_thread.daemon = True
+        self.__live_thread = Thread(target=self.__live_handler)
+        self.__live_thread.daemon = True
 
         self.__message_thread = Thread(target=self.__message_handler)
         self.__message_thread.daemon = True
 
-        self.__heartbeat_thread.start()
-        self.__status_thread.start()
+        self.__live_thread.start()
         self.__message_thread.start()
 
 class DroneManager():

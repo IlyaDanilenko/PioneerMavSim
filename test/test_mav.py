@@ -1,7 +1,8 @@
 from gs_router.python.piosdk import Pioneer
 from time import sleep
 
-pioneer = Pioneer(method=2, pioneer_ip='localhost', pioneer_mavlink_port=8001)
+port = int(input("Port: "))
+pioneer = Pioneer(method=2, pioneer_ip='localhost', pioneer_mavlink_port=port)
 print("OKKK")
 pioneer.led_control(255, 255, 0, 0)
 pioneer.arm()

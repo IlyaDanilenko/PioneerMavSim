@@ -259,7 +259,7 @@ class MavlinkUnit:
         self.__message_thread.start()
 
 class DroneManager():
-    def __init__(self, visualization, update_time = 0.0005):
+    def __init__(self, visualization, update_time = 0.0001):
         self.visualization = visualization
         self.__update_time = update_time
         self.mavlink_servers = []
@@ -284,6 +284,13 @@ class DroneManager():
                     self.visualization.change_model_color(index, *model_color)
 
             sleep(self.__update_time)
+
+    def get_servers_address(self) -> list:
+        address = []
+        for server in self.mavlink_servers:
+            address.append((server.hostname, server.port))
+
+        return address
 
     def start(self):
         if not self.__run:
@@ -327,7 +334,7 @@ class MenuWidget(QWidget):
         self.main_layout.addWidget(buttons_group, 1, 0)
 
         self.setLayout(self.main_layout)
-    
+
     def add(self, ip, port):
         text = f"IP: {ip}, PORT: {port}"
         self.list.addItem(text)
@@ -464,7 +471,7 @@ class SettingsMenuItemWidget(QWidget):
                 widget.setLayout(widget_layout)
                 self.scroll_layout.addWidget(widget)
 
-    def get_data_dict(self, data_dict=None, inputs=None):
+    def get_data_dict(self, data_dict=None, inputs=None) -> dict:
         if inputs is None:
             inputs = []
             for edit in self.__inputs:
@@ -539,12 +546,14 @@ class SettingsMenuWidget(QWidget):
             self.__escape_callback()
 
 class SimulationWindow(QMainWindow):
-    def __init__(self, path):
+    def __init__(self, settings_path, save_path):
         super().__init__()
         self.setWindowTitle("PioneerMavSim")
 
+        self.__save_path = save_path
+
         self.settings = SimulationSettingManager()
-        self.settings.load(path)
+        self.settings.load(settings_path)
 
         self.setGeometry(50, 50, 800, 800)
         self.world = VisualizationWorld(self.settings)
@@ -569,6 +578,7 @@ class SimulationWindow(QMainWindow):
         widgets.addWidget(self.settings_menu)
 
         self.setCentralWidget(widgets)
+        self.load(self.__save_path)
 
     def resizeEvent(self, event):
         self.world_widget.setGeometry(0,0, self.width(), self.height())
@@ -577,21 +587,43 @@ class SimulationWindow(QMainWindow):
 
     def __add_func(self):
         count = 0
-        ip = ""
+        hostname = ""
         port = 0
         while True:
             text, ok = QInputDialog.getText(self, 'Добавить коптер', 'Введите ip коптера (ip:порт)')
             if ok:
                 count = text.count(':')
                 if count == 1:
-                    ip, port = text.split(':')
-                    if port.isdigit() and len(ip) > 0:
+                    hostname, port = text.split(':')
+                    if port.isdigit() and len(hostname) > 0:
                         port = int(port)
                         break
             else:
                 return
-        self.menu.add(ip, port)
-        self.drone_manager.add_server(ip, port)
+        self.add_server(hostname, port)
+
+    def load(self, path):
+        try:
+            with open(path, 'r') as f:
+                loaded_data = json.load(f)
+                for data in loaded_data:
+                    self.add_server(data['hostname'], data['port'])
+        except FileNotFoundError:
+            pass
+
+    def save(self, path):
+        with open(path, 'w') as f:
+            save_list = []
+            for address in self.drone_manager.get_servers_address():
+                address_dict = {}
+                address_dict['hostname'] = address[0]
+                address_dict['port'] = address[1]
+                save_list.append(address_dict)
+            json.dump(save_list, f)
+
+    def add_server(self, hostname, port):
+        self.menu.add(hostname, port)
+        self.drone_manager.add_server(hostname, port)
 
     def __start_sim(self):
         self.world.reset_camera()
@@ -610,6 +642,7 @@ class SimulationWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.drone_manager.close()
+        self.save(self.__save_path)
         super().closeEvent(event)
 
     def __back_to_menu(self):
@@ -623,7 +656,7 @@ class SimulationWindow(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    main = SimulationWindow("settings/settings.json")
+    main = SimulationWindow("settings/settings.json", "save/save.json")
     main.show()
 
     sys.exit(app.exec_())

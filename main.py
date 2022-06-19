@@ -10,7 +10,7 @@ from time import sleep, time
 from math import sqrt
 
 class SimulationSettings:
-    def __init__(self, simulation):
+    def __init__(self, simulation : dict):
         self.speed = simulation['speed']
 
 class SimulationSettingManager(SettingsManager):
@@ -20,7 +20,7 @@ class SimulationSettingManager(SettingsManager):
         self.__path = None
         super().__init__()
 
-    def load(self, path):
+    def load(self, path : str):
         self.__path = path
         self.__raw_data = super().load(path)
         self.simulation = SimulationSettings(self.__raw_data['simulation'])
@@ -29,7 +29,7 @@ class SimulationSettingManager(SettingsManager):
     def __dict__(self):
         return self.__raw_data
 
-    def update_from_dict(self, data_dict):
+    def update_from_dict(self, data_dict : dict):
         self.__raw_data = data_dict
 
     def write(self):
@@ -53,13 +53,13 @@ class MavlinkUnitModel():
     def set_color(self, r = 0, g = 0, b = 0):
         self.color = [r, g, b]
 
-    def check_pos(self, x, y, z, yaw) -> bool:
+    def check_pos(self, x : float, y : float, z : float, yaw : float) -> bool:
         return (x, y, z, yaw) != self.__last_position
 
-    def set_pos(self, x, y, z, yaw):
+    def set_pos(self, x : float, y : float, z : float, yaw : float):
         self.__last_position = (x, y, z, yaw)
 
-    def go_to_point(self, x, y, z):
+    def go_to_point(self, x : float, y : float, z : float):
         delta_x = x - self.x
         delta_y = y - self.y
         delta_z = z - self.z
@@ -70,7 +70,7 @@ class MavlinkUnitModel():
             self.z += delta_z / l * 0.01
             sleep(1.0 / self.speed)
 
-    def update_yaw(self, angle):
+    def update_yaw(self, angle : float):
         old_angle = int(self.yaw)
         pri = 1
         if angle < 0.0:
@@ -135,25 +135,25 @@ class MavlinkUnit:
             self.__heartbeat_send()
             sleep(self.heartbeat_rate / 2)
 
-    def __command_ack_send(self, command):
+    def __command_ack_send(self, command : int):
         self.master.mav.command_ack_send(
             command = command,
             result = common.MAV_RESULT_ACCEPTED
         )
 
-    def __comand_inprogress_send(self, command):
+    def __comand_inprogress_send(self, command : int):
         self.master.mav.command_ack_send(
             command = command,
             result = common.MAV_RESULT_IN_PROGRESS
         )
 
-    def __command_denied_send(self, command):
+    def __command_denied_send(self, command : int):
         self.master.mav.command_ack_send(
             command = command,
             result = common.MAV_RESULT_DENIED
         )
 
-    def __go_to_point_target(self, x, y, z, yaw):
+    def __go_to_point_target(self, x : float, y : float, z : float, yaw : float):
         self.model.inprogress = True
         self.model.set_pos(x, y, z, yaw)
         self.model.go_to_point(x, y, z)
@@ -223,7 +223,7 @@ class MavlinkUnit:
             print(f'{self.hostname}:{self.port} offline')
         self.master.close()
 
-    def set_speed(self, speed):
+    def set_speed(self, speed : int):
         if self.model is not None:
             self.model.speed = speed
 
@@ -251,18 +251,18 @@ class MavlinkUnit:
         self.__message_thread.start()
 
 class DroneManager():
-    def __init__(self, visualization, update_time = 0.0001):
+    def __init__(self, visualization : VisualizationWorld, update_time = 0.0001):
         self.visualization = visualization
         self.__update_time = update_time
         self.mavlink_servers = []
 
         self.__run = False
 
-    def add_server(self, hostname, port):
+    def add_server(self, hostname : str, port : int):
         self.mavlink_servers.append(MavlinkUnit(hostname, port, speed=self.visualization.settings.simulation.speed))
         self.visualization.add_model('drone', (0, 0, 0), 0)
 
-    def __target(self, index):
+    def __target(self, index : int):
         server = self.mavlink_servers[index]
         while self.__run:
             self.visualization.change_model_position(index, server.get_position() , server.get_yaw())
@@ -326,8 +326,8 @@ class MenuWidget(QWidget):
 
         self.setLayout(self.main_layout)
 
-    def add(self, ip, port):
-        text = f"IP: {ip}, PORT: {port}"
+    def add(self, hostname : str, port : int):
+        text = f"HOSTNAME: {hostname}, PORT: {port}"
         self.list.addItem(text)
 
 class SimWidget(QWidget):
@@ -415,7 +415,7 @@ class SimWidget(QWidget):
             self.trajectory_button.setText("Показать траекторию")
 
 class SettingsMenuItemWidget(QWidget):
-    def __init__(self, name, data):
+    def __init__(self, name : str, data):
         self.name = name
         self.__data = data
         self.__inputs = []
@@ -440,7 +440,7 @@ class SettingsMenuItemWidget(QWidget):
                 
         self.setLayout(main_layout)
 
-    def _add_param(self, data_dict, lavel = 1):
+    def _add_param(self, data_dict : dict, lavel = 1):
         for key in data_dict:
             font = QFont("Times", 24 // lavel)
             label = QLabel(self)
@@ -537,7 +537,7 @@ class SettingsMenuWidget(QWidget):
             self.__escape_callback()
 
 class SimulationWindow(QMainWindow):
-    def __init__(self, settings_path, save_path):
+    def __init__(self, settings_path : str, save_path : str):
         super().__init__()
         self.setWindowTitle("PioneerMavSim")
 
@@ -593,7 +593,7 @@ class SimulationWindow(QMainWindow):
                 return
         self.add_server(hostname, port)
 
-    def load(self, path):
+    def load(self, path : str):
         try:
             with open(path, 'r') as f:
                 loaded_data = json.load(f)
@@ -602,7 +602,7 @@ class SimulationWindow(QMainWindow):
         except FileNotFoundError:
             pass
 
-    def save(self, path):
+    def save(self, path : str):
         with open(path, 'w') as f:
             save_list = []
             for address in self.drone_manager.get_servers_address():
@@ -612,7 +612,7 @@ class SimulationWindow(QMainWindow):
                 save_list.append(address_dict)
             json.dump(save_list, f)
 
-    def add_server(self, hostname, port):
+    def add_server(self, hostname : str, port : int):
         self.menu.add(hostname, port)
         self.drone_manager.add_server(hostname, port)
 

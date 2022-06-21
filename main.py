@@ -43,7 +43,7 @@ class MavlinkUnitModel():
         self.z = z
         self.yaw = yaw
         self.speed = speed
-        self.color = [0, 0, 0]
+        self.color = (0, 0, 0)
 
         self.takeoff_status = False
         self.preflight_status = False
@@ -51,7 +51,7 @@ class MavlinkUnitModel():
         self.__last_position = (x, y, z, yaw)
 
     def set_color(self, r = 0, g = 0, b = 0):
-        self.color = [r, g, b]
+        self.color = (r, g, b)
 
     def check_pos(self, x : float, y : float, z : float, yaw : float) -> bool:
         return (x, y, z, yaw) != self.__last_position
@@ -81,7 +81,7 @@ class MavlinkUnitModel():
 
     def takeoff(self):
         self.inprogress = True
-        for _ in range(0, 200):
+        for _ in range(100):
             self.z += 0.01
             sleep(1.0 / self.speed)
         self.takeoff_status = True
@@ -89,7 +89,7 @@ class MavlinkUnitModel():
 
     def landing(self):
         self.inprogress = True
-        for _ in range(int(self.z * 100), 0, -1):
+        for _ in range(int(self.z * 100)):
             self.z -= 0.01
             sleep(1.0 / self.speed)
         self.takeoff_status = False
@@ -168,10 +168,10 @@ class MavlinkUnit:
         
     def __message_handler(self):
         try:
+            takeoff_once = False
             while self.online:
                 msg = self.master.recv_match(timeout=0.1)
                 if msg is not None:
-                    # print(msg)
                     if msg.get_type() == "COMMAND_LONG":
                         if msg.command == 400: # preflight and disarm
                             if not self.model.preflight_status:
@@ -183,11 +183,17 @@ class MavlinkUnit:
                         elif msg.command == 22: # takeoff
                             if not self.model.takeoff_status:
                                 if not self.model.inprogress:
-                                    self.__command_ack_send(msg.command)
-                                    Thread(target=self.model.takeoff).start()
-                                self.model.inprogress = False
+                                    if not takeoff_once:
+                                        Thread(target=self.model.takeoff).start()
+                                        takeoff_once = True
+                                else:
+                                    self.__comand_inprogress_send(msg.command)
                             else:
-                                self.__command_denied_send(msg.command)
+                                if takeoff_once:
+                                    self.__command_ack_send(msg.command)
+                                    takeoff_once = False
+                                else:
+                                    self.__command_denied_send(msg.command)
                         elif msg.command == 21: # landing
                             if not self.model.inprogress:
                                 if self.model.takeoff_status:
@@ -267,7 +273,7 @@ class MavlinkUnit:
         self.__message_thread.start()
 
 class DroneManager():
-    def __init__(self, visualization : VisualizationWorld, update_time = 0.0001):
+    def __init__(self, visualization : VisualizationWorld, update_time = 0.0002):
         self.visualization = visualization
         self.__update_time = update_time
         self.mavlink_servers = []

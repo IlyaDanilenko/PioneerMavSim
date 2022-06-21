@@ -169,6 +169,7 @@ class MavlinkUnit:
     def __message_handler(self):
         try:
             takeoff_once = False
+            landing_once = False
             while self.online:
                 msg = self.master.recv_match(timeout=0.1)
                 if msg is not None:
@@ -197,10 +198,15 @@ class MavlinkUnit:
                         elif msg.command == 21: # landing
                             if not self.model.inprogress:
                                 if self.model.takeoff_status:
-                                    self.__command_ack_send(msg.command)
-                                    Thread(target=self.__landing_target).start()
+                                    if not landing_once:
+                                        Thread(target=self.__landing_target).start()
+                                        landing_once = True
                                 else:
-                                    self.__command_denied_send(msg.command)
+                                    if landing_once:
+                                        self.__command_ack_send(msg.command)
+                                        landing_once = False
+                                    else:
+                                        self.__command_denied_send(msg.command)
                         elif msg.command == 31010: # led control
                             self.model.set_color(msg.param2, msg.param3, msg.param4)
                             self.__command_ack_send(msg.command)

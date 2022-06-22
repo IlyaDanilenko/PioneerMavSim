@@ -41,7 +41,7 @@
         }
     },
     "objects": {
-        "path": "ObjectVisualizator/objects",
+        "path": "objects",
         "color": {
             "r": 86,
             "g": 86,
@@ -54,6 +54,7 @@
         }
     },
     "simulation": {
-        "speed": 60
+        "speed": 60,
+        "fire_radius": 0.5
     }
 }

@@ -1,6 +1,7 @@
 import sys, json
+from enum import Enum
 from ObjectVisualizator.main import SettingsManager, VisWidget, VisualizationWorld
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QLabel, QLineEdit, QMessageBox, QScrollArea, QListWidgetItem, QDialog
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QLabel, QLineEdit, QMessageBox, QScrollArea, QListWidgetItem, QDialog, QComboBox
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import common
 from PyQt5.QtCore import Qt
@@ -12,6 +13,7 @@ from math import sqrt
 class SimulationSettings:
     def __init__(self, simulation : dict):
         self.speed = simulation['speed']
+        self.fire_radius = simulation['fire_radius']
 
 class SimulationSettingManager(SettingsManager):
     def __init__(self):
@@ -36,7 +38,13 @@ class SimulationSettingManager(SettingsManager):
         with open(self.__path, 'w') as f:
             json.dump(self.__raw_data, f)
 
-class MavlinkUnitModel():
+class FireModel:
+    def __init__(self, x = 0.0, y = 0.0, temp = 60.0):
+        self.x = x
+        self.y = y
+        self.temp = temp
+
+class DroneModel:
     def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0, speed = 60):
         self.x = x
         self.y = y
@@ -44,6 +52,8 @@ class MavlinkUnitModel():
         self.yaw = yaw
         self.speed = speed
         self.color = (0, 0, 0)
+        self.__default_temp_data = 20.0
+        self.__temp_sensor_data = 20.0
 
         self.takeoff_status = False
         self.preflight_status = False
@@ -52,6 +62,17 @@ class MavlinkUnitModel():
 
     def set_color(self, r = 0, g = 0, b = 0):
         self.color = (r, g, b)
+
+    def set_temp_sensor_data(self, data = None):
+        if data is None:
+            if self.__temp_sensor_data != self.__default_temp_data:
+                self.__temp_sensor_data = self.__default_temp_data
+        else:
+            if self.__temp_sensor_data != data:
+                self.__temp_sensor_data = data
+
+    def get_temp_sensor_data(self) -> float:
+        return self.__temp_sensor_data
 
     def check_pos(self, x : float, y : float, z : float, yaw : float) -> bool:
         return (x, y, z, yaw) != self.__last_position
@@ -129,9 +150,26 @@ class MavlinkUnit:
         self.master.mav.srcComponent = 26
         self.master.mav.local_position_ned_send(int(time()), self.model.x, self.model.y, self.model.z, 0, 0, 0)
 
+    def __distance_sensor_send(self, type):
+        if type == common.MAV_DISTANCE_SENSOR_UNKNOWN:
+            distance = int(self.model.get_temp_sensor_data())
+        elif type == common.MAV_DISTANCE_SENSOR_LASER:
+            distance = self.model.z
+        self.master.mav.distance_sensor_send(
+            time_boot_ms = int(time()),
+            min_distance = 0,
+            max_distance = 100,
+            current_distance = distance,
+            type = type,
+            id = 0,
+            orientation = common.MAV_SENSOR_ROTATION_NONE,
+            covariance = 0
+        )
+
     def __live_handler(self):
         while self.online:
             self.__status_send()
+            self.__distance_sensor_send(common.MAV_DISTANCE_SENSOR_UNKNOWN)
             sleep(self.heartbeat_rate / 2)
             self.__heartbeat_send()
             sleep(self.heartbeat_rate / 2)
@@ -264,8 +302,11 @@ class MavlinkUnit:
     def get_start_position(self) -> tuple[float, float, float]:
         return self.__start_position
 
+    def set_temp_data(self, temp = None):
+        self.model.set_temp_sensor_data(temp)
+
     def start(self):
-        self.model = MavlinkUnitModel(*self.__start_position, speed = self.__speed)
+        self.model = DroneModel(*self.__start_position, speed = self.__speed)
         self.master = mavutil.mavlink_connection(f'udpin:{self.hostname}:{self.port}', source_component=26, dialect = 'common')
         self.online = True
 
@@ -278,32 +319,43 @@ class MavlinkUnit:
         self.__live_thread.start()
         self.__message_thread.start()
 
-class DroneManager():
+class ModelType(Enum):
+    DRONE = ['drone', 'Коптер', MavlinkUnit]
+    FIRE = ['fire', 'Пожар', FireModel]
+
+class ObjectsManager():
     def __init__(self, visualization : VisualizationWorld, update_time = 0.0002):
         self.visualization = visualization
         self.__update_time = update_time
-        self.mavlink_servers = []
+        self.objects = []
 
         self.__run = False
 
     def add_server(self, hostname : str, port : int, start_position : tuple):
-        self.mavlink_servers.append(MavlinkUnit(hostname, port, start_position, speed=self.visualization.settings.simulation.speed))
-        self.visualization.add_model('drone', start_position, 0)
+        self.objects.append(MavlinkUnit(hostname, port, start_position, speed=self.visualization.settings.simulation.speed))
+        self.visualization.add_model(ModelType.DRONE.value[0], start_position, 0)
 
-    def remove_server(self, index : int):
-        self.mavlink_servers[index].online = False
-        self.mavlink_servers.pop(index)
+    def add_fire(self, position : tuple):
+        self.objects.append(FireModel(*position))
+        self.visualization.add_model(ModelType.FIRE.value[0], (*position, 0.0), 0)
+        self.visualization.change_model_color(-1, 255, 0, 0)
+
+    def remove_objects(self, index : int):
+        if type(self.objects[index]) == ModelType.DRONE.value[2]:
+            self.objects[index].online = False
+        self.objects.pop(index)
         self.visualization.remove_model(index)
 
-    def update_start_position(self, index : int, start_position : tuple):
-        self.mavlink_servers[index].set_start_position(*start_position)
+    def update_drone_info(self, index: int, hostname : str, port : int, position : tuple):
+        self.objects[index].set_start_position(*position)
+        self.objects[index].set_hostname(hostname)
+        self.objects[index].set_port(port)
 
-    def update_hostname_port(self, index : int, hostname : str, port : int):
-        self.mavlink_servers[index].set_hostname(hostname)
-        self.mavlink_servers[index].set_port(port)
+    def update_fire_info(self, index : int, position : tuple):
+        self.visualization.change_model_position(index, (*position, 0), 0)
 
-    def __target(self, index : int):
-        server = self.mavlink_servers[index]
+    def __drone_target(self, index : int):
+        server = self.objects[index]
         while self.__run:
             new_position = server.get_position()
             new_yaw = server.get_yaw()
@@ -320,73 +372,155 @@ class DroneManager():
 
             sleep(self.__update_time)
 
+    def __fire_target(self, index : int):
+        fire = self.objects[index]
+        while self.__run:
+            for drone in self.objects:
+                if type(drone) == ModelType.DRONE.value[2]:
+                    drone_x, drone_y, _ = drone.get_position()
+                    if sqrt(abs(drone_x - fire.x)**2 + abs(drone_y - fire.y)**2) <= self.visualization.settings.simulation.fire_radius:
+                        drone.set_temp_data(fire.temp)
+                    else:
+                        drone.set_temp_data()
+            sleep(self.__update_time)
+
     def start(self):
         if not self.__run:
             self.__run = True
-            for index in range(len(self.mavlink_servers)):
-                self.mavlink_servers[index].start()
-                Thread(target=self.__target, args=(index, )).start()
+            for index in range(len(self.objects)):
+                if type(self.objects[index]) == ModelType.DRONE.value[2]:
+                    self.objects[index].start()
+                    Thread(target=self.__drone_target, args=(index, )).start()
+                elif type(self.objects[index]) == ModelType.FIRE.value[2]:
+                    Thread(target=self.__fire_target, args=(index, )).start()
 
     def close(self):
-        for server in self.mavlink_servers:
-            server.online = False
+        for server in self.objects:
+            if type(server) == ModelType.DRONE.value[2]:
+                server.online = False
         self.__run = False
 
-class MenuItemDialog(QDialog):
-    def __init__(self, hostname : str, port : int, position : tuple):
-        self.__hostname = hostname
-        self.__port = port
-        self.__position = position
+class ObjectDialog(QDialog):
+    def __init__(self, type = None, fields = None):
+        self.__type = type
+        if fields is None:
+            self.__fields = []
+        else:
+            self.__fields = fields
+
+        self.__field_inputs = []
+
         super().__init__()
-        self.setWindowTitle("Изменение настройки устройства")
         self.setWindowModality(Qt.ApplicationModal)
 
-        layout = QVBoxLayout()
+        self.main_layout = QVBoxLayout()
+
+        if self.__type is None:
+            self.setWindowTitle("Добавить объект")
+            self.setGeometry(200, 200, 500, 50)
+
+            combo = QComboBox()
+            combo.addItem(ModelType.DRONE.value[1])
+            combo.addItem(ModelType.FIRE.value[1])
+            combo.activated[str].connect(self.__on_active)
+
+            self.main_layout.addWidget(combo)
+        else:
+            self.setWindowTitle("Изменение объекта")
+            self.render_interface()
+
+        self.setLayout(self.main_layout)
+
+    def __on_active(self, text):
+        if text == ModelType.DRONE.value[1]:
+            self.__type = ModelType.DRONE
+        elif text == ModelType.FIRE.value[1]:
+            self.__type = ModelType.FIRE
+
+        self.render_interface()
+
+    def render_interface(self):
+        if self.__type == ModelType.DRONE:
+            if len(self.__fields) != 3:
+                self.__fields = ["", 0, (0.0, 0.0, 0.0)]
+            self.drone_interface(*self.__fields)
+        elif self.__type == ModelType.FIRE:
+            if len(self.__fields) != 1:
+                self.__fields = [(0.0, 0.0)]
+            self.fire_interface(*self.__fields)
+
+    def __cancel_click(self):
+        self.close()
+
+    def __save_click(self):
+        fields = [field.text() for field in self.__field_inputs]
+        if self.__type == ModelType.DRONE:
+            self.__fields = [str(fields[0]), int(fields[1]), (float(fields[2]), float(fields[3]), float(fields[4]))]
+        elif self.__type == ModelType.FIRE:
+            self.__fields = [(float(fields[0]), float(fields[1]))]
+        self.close()
+
+    def remove_interfaces(self):
+        count = self.main_layout.count()
+        if count == 1:
+            return
+        elif count == 7 or count == 4:
+            while count != 1:
+                self.main_layout.removeWidget(self.main_layout.itemAt(1).widget())
+                count = self.main_layout.count()
+
+    def drone_interface(self, hostname : str, port : int, position : tuple):
+        self.remove_interfaces()
 
         hostname_widget = QWidget()
         hostname_layout = QHBoxLayout(hostname_widget)
         hostname_text = QLabel()
         hostname_text.setText('Hostname')
-        self.__hostname_input = QLineEdit(hostname)
+        hostname_input = QLineEdit(hostname)
         hostname_layout.addWidget(hostname_text)
-        hostname_layout.addWidget(self.__hostname_input, 100)
+        hostname_layout.addWidget(hostname_input, 100)
         hostname_widget.setLayout(hostname_layout)
+        self.__field_inputs.append(hostname_input)
 
         port_widget = QWidget()
         port_layout = QHBoxLayout(port_widget)
         port_text = QLabel()
         port_text.setText('Port')
-        self.__port_input = QLineEdit(str(port))
+        port_input = QLineEdit(str(port))
         port_layout.addWidget(port_text)
-        port_layout.addWidget(self.__port_input, 100)
+        port_layout.addWidget(port_input, 100)
         port_widget.setLayout(port_layout)
+        self.__field_inputs.append(port_input)
 
         x_widget = QWidget()
         x_layout = QHBoxLayout(x_widget)
         x_text = QLabel()
         x_text.setText('Координата X')
-        self.__x_input = QLineEdit(str(position[0]))
+        x_input = QLineEdit(str(position[0]))
         x_layout.addWidget(x_text)
-        x_layout.addWidget(self.__x_input, 100)
+        x_layout.addWidget(x_input, 100)
         x_widget.setLayout(x_layout)
+        self.__field_inputs.append(x_input)
 
         y_widget = QWidget()
         y_layout = QHBoxLayout(y_widget)
         y_text = QLabel()
         y_text.setText('Координата Y')
-        self.__y_input = QLineEdit(str(position[1]))
+        y_input = QLineEdit(str(position[1]))
         y_layout.addWidget(y_text)
-        y_layout.addWidget(self.__y_input, 100)
+        y_layout.addWidget(y_input, 100)
         y_widget.setLayout(y_layout)
+        self.__field_inputs.append(y_input)
 
         z_widget = QWidget()
         z_layout = QHBoxLayout(z_widget)
         z_text = QLabel()
         z_text.setText('Координата Z')
-        self.__z_input = QLineEdit(str(position[2]))
+        z_input = QLineEdit(str(position[2]))
         z_layout.addWidget(z_text)
-        z_layout.addWidget(self.__z_input, 100)
+        z_layout.addWidget(z_input, 100)
         z_widget.setLayout(z_layout)
+        self.__field_inputs.append(z_input)
 
         control = QWidget()
         control_layout = QGridLayout(control)
@@ -400,33 +534,61 @@ class MenuItemDialog(QDialog):
         control_layout.addWidget(save_button, 0, 1)
         control.setLayout(control_layout)
 
-        layout.addWidget(hostname_widget)
-        layout.addWidget(port_widget)
-        layout.addWidget(x_widget)
-        layout.addWidget(y_widget)
-        layout.addWidget(z_widget)
-        layout.addWidget(control)
+        self.main_layout.addWidget(hostname_widget)
+        self.main_layout.addWidget(port_widget)
+        self.main_layout.addWidget(x_widget)
+        self.main_layout.addWidget(y_widget)
+        self.main_layout.addWidget(z_widget)
+        self.main_layout.addWidget(control)
 
-        self.setLayout(layout)
+    def fire_interface(self, position : tuple):
+        self.remove_interfaces()
 
-    def __cancel_click(self):
-        self.close()
+        x_widget = QWidget()
+        x_layout = QHBoxLayout(x_widget)
+        x_text = QLabel()
+        x_text.setText('Координата X')
+        x_input = QLineEdit(str(position[0]))
+        x_layout.addWidget(x_text)
+        x_layout.addWidget(x_input, 100)
+        x_widget.setLayout(x_layout)
+        self.__field_inputs.append(x_input)
 
-    def __save_click(self):
-        self.__hostname = self.__hostname_input.text()
-        self.__port = int(self.__port_input.text())
-        self.__position = (float(self.__x_input.text()), float(self.__y_input.text()), float(self.__z_input.text()))
-        self.close()
+        y_widget = QWidget()
+        y_layout = QHBoxLayout(y_widget)
+        y_text = QLabel()
+        y_text.setText('Координата Y')
+        y_input = QLineEdit(str(position[1]))
+        y_layout.addWidget(y_text)
+        y_layout.addWidget(y_input, 100)
+        y_widget.setLayout(y_layout)
+        self.__field_inputs.append(y_input)
 
-    def exec_(self) -> tuple[str, int, tuple[float, float, float]]:
+        control = QWidget()
+        control_layout = QGridLayout(control)
+        cancel_button = QPushButton()
+        cancel_button.setText("Отменить")
+        cancel_button.clicked.connect(self.__cancel_click)
+        save_button = QPushButton()
+        save_button.setText("Сохранить")
+        save_button.clicked.connect(self.__save_click)
+        control_layout.addWidget(cancel_button, 0, 0)
+        control_layout.addWidget(save_button, 0, 1)
+        control.setLayout(control_layout)
+
+        self.main_layout.addWidget(x_widget)
+        self.main_layout.addWidget(y_widget)
+        self.main_layout.addWidget(control)
+
+    def exec_(self) -> list[str, list]:
         super().exec_()
-        return self.__hostname, self.__port, self.__position
+        return self.__type, self.__fields
 
 class MenuWidgetItem(QWidget):
-    def __init__(self, hostname, port, start_position = (0.0, 0.0, 0.0)):
-        self.__hostname = hostname
-        self.__port = port
-        self.__start_position = start_position
+    def __init__(self, type = ModelType.DRONE, field = None):
+        self.__type = type
+        self.__field = field
+
         super().__init__()
         self.setContentsMargins(0, 0, 0, 0)
 
@@ -443,15 +605,18 @@ class MenuWidgetItem(QWidget):
         self.setLayout(layout)
 
     def __button_click(self):
-        dialog = MenuItemDialog(self.__hostname, self.__port, self.__start_position)
-        self.__hostname, self.__port, self.__start_position = dialog.exec_()
+        dialog = ObjectDialog(self.__type, self.__field)
+        _, self.__field = dialog.exec_()
         self.__set_text()
 
     def __set_text(self):
-        self.text.setText(f"HOSTNAME: {self.__hostname}, PORT: {self.__port}, START POSITION: {self.__start_position}")
+        if self.__type == ModelType.DRONE:
+            self.text.setText(f"TYPE: DRONE, HOSTNAME: {self.__field[0]}, PORT: {self.__field[1]}, START POSITION: {self.__field[2]}")
+        elif self.__type == ModelType.FIRE:
+            self.text.setText(f"TYPE: FIRE, POSITION: {self.__field[0]}")
 
-    def get_start_data(self) -> tuple[str, int, tuple[float, float, float]]:
-        return self.__hostname, self.__port, self.__start_position
+    def get_start_data(self) -> tuple:
+        return self.__type, self.__field
 
 class MenuWidget(QWidget):
     def __init__(self, add_func, remove_func, sim_func, set_func):
@@ -464,11 +629,11 @@ class MenuWidget(QWidget):
         self.list.clicked.connect(self.__remove_button_activate)
 
         self.add_button = QPushButton(self)
-        self.add_button.setText("Добавить квадрокоптер")
+        self.add_button.setText("Добавить объект")
         self.add_button.clicked.connect(add_func)
 
         self.remove_button = QPushButton(self)
-        self.remove_button.setText("Удалить коптер")
+        self.remove_button.setText("Удалить объект")
         self.remove_button.setEnabled(False)
         self.remove_button.clicked.connect(remove_func)
 
@@ -493,12 +658,17 @@ class MenuWidget(QWidget):
 
         self.setLayout(self.main_layout)
 
-    def add(self, hostname : str, port : int, start_position : tuple):
-        new_item_widget = MenuWidgetItem(hostname, port, start_position)
+    def __add(self, widget):
         new_item = QListWidgetItem()
-        new_item.setSizeHint(new_item_widget.sizeHint()) 
+        new_item.setSizeHint(widget.sizeHint()) 
         self.list.addItem(new_item)
-        self.list.setItemWidget(new_item, new_item_widget)
+        self.list.setItemWidget(new_item, widget)
+
+    def add_drone(self, hostname : str, port : int, start_position : tuple):
+        self.__add(MenuWidgetItem(ModelType.DRONE, [hostname, port, start_position]))
+
+    def add_fire(self, position: tuple):
+        self.__add(MenuWidgetItem(ModelType.FIRE, [position]))
 
     def remove_current(self) -> int:
         row = self.list.currentRow()
@@ -735,11 +905,11 @@ class SimulationWindow(QMainWindow):
         self.setGeometry(50, 50, 800, 800)
         self.world = VisualizationWorld(self.settings)
 
-        self.drone_manager = DroneManager(self.world)
+        self.objects_manager = ObjectsManager(self.world)
 
         widgets = QStackedWidget(self)
 
-        self.world_widget = SimWidget(self.world, self, self.drone_manager, self.__back_to_menu)
+        self.world_widget = SimWidget(self.world, self, self.objects_manager, self.__back_to_menu)
         self.world_widget.hide()
         self.world_widget.setGeometry(0, 0, self.width(), self.height())
 
@@ -767,8 +937,13 @@ class SimulationWindow(QMainWindow):
             with open(path, 'r') as f:
                 loaded_data = json.load(f)
                 for data in loaded_data:
-                    position = (data['start_position']['x'], data['start_position']['y'], data['start_position']['z'])
-                    self.add_server(data['hostname'], data['port'], position)
+                    type = data['type']
+                    if type == ModelType.DRONE.value[0]:
+                        position = (data['start_position']['x'], data['start_position']['y'], data['start_position']['z'])
+                        self.add_drone(data['hostname'], data['port'], position)
+                    elif type == ModelType.FIRE.value[0]:
+                        position = (data['position']['x'], data['position']['y'])
+                        self.add_fire(position)
         except FileNotFoundError:
             pass
 
@@ -778,55 +953,61 @@ class SimulationWindow(QMainWindow):
 
             items = self.menu.get_items()
             for index in range(len(items)):
-                data = items[index].get_start_data()
+                type, data = items[index].get_start_data()
                 data_dict = {}
-                data_dict['hostname'] = data[0]
-                data_dict['port'] = data[1]
+                data_dict['type'] = type.value[0]
+                if type == ModelType.DRONE:
+                    data_dict['hostname'] = data[0]
+                    data_dict['port'] = data[1]
 
-                position_dict = {}
-                position_dict['x'] = data[2][0]
-                position_dict['y'] = data[2][1]
-                position_dict['z'] = data[2][2]
+                    position_dict = {}
+                    position_dict['x'] = data[2][0]
+                    position_dict['y'] = data[2][1]
+                    position_dict['z'] = data[2][2]
 
-                data_dict['start_position'] = position_dict
+                    data_dict['start_position'] = position_dict
+                elif type == ModelType.FIRE:
+                    position_dict = {}
+                    position_dict['x'] = data[0][0]
+                    position_dict['y'] = data[0][1]
+                    data_dict['position'] = position_dict
                 save_list.append(data_dict)
+                
             json.dump(save_list, f)
 
-    def add_server(self, hostname : str, port : int, start_position = (0.0, 0.0, 0.0)):
-        self.menu.add(hostname, port, start_position)
-        self.drone_manager.add_server(hostname, port, start_position)
+    def add_drone(self, hostname : str, port : int, start_position = (0.0, 0.0, 0.0)):
+        self.menu.add_drone(hostname, port, start_position)
+        self.objects_manager.add_server(hostname, port, start_position)
+
+    def add_fire(self, position = (0.0, 0.0)):
+        self.menu.add_fire(position)
+        self.objects_manager.add_fire(position)
 
     def __add_func(self):
-        count = 0
-        hostname = ""
-        port = 0
-        while True:
-            text, ok = QInputDialog.getText(self, 'Добавить коптер', 'Введите ip коптера (ip:порт)')
-            if ok:
-                count = text.count(':')
-                if count == 1:
-                    hostname, port = text.split(':')
-                    if port.isdigit() and len(hostname) > 0:
-                        port = int(port)
-                        break
-            else:
-                return
-        self.add_server(hostname, port)
+        dialog = ObjectDialog()
+        type, fields = dialog.exec_()
+        if type == ModelType.DRONE:
+            if fields[0] != '':
+                self.add_drone(*fields)
+        elif type == ModelType.FIRE:
+            self.add_fire(fields[0])
 
     def __remove_func(self):
         index = self.menu.remove_current()
-        self.drone_manager.remove_server(index)
+        self.objects_manager.remove_objects(index)
 
     def __start_sim(self):
         self.world.reset_camera()
         self.world.reset_trajectories()
         items = self.menu.get_items()
         for index in range(len(items)):
-            data = items[index].get_start_data()
-            self.drone_manager.update_start_position(index, data[2])
-            self.drone_manager.update_hostname_port(index, data[0], data[1])
+            type, data = items[index].get_start_data()
+            if type == ModelType.DRONE:
+                self.objects_manager.update_drone_info(index, *data)
+            elif type == ModelType.FIRE:
+                self.objects_manager.update_fire_info(index, *data)
             
-        self.drone_manager.start()
+        self.objects_manager.start()
         self.menu.hide()
         self.world_widget.show()
         self.menu.clearFocus()
@@ -839,12 +1020,12 @@ class SimulationWindow(QMainWindow):
         self.settings_menu.setFocus()
 
     def closeEvent(self, event):
-        self.drone_manager.close()
+        self.objects_manager.close()
         self.save(self.__save_path)
         super().closeEvent(event)
 
     def __back_to_menu(self):
-        self.drone_manager.close()
+        self.objects_manager.close()
         self.world_widget.hide()
         self.settings_menu.hide()
         self.menu.show()

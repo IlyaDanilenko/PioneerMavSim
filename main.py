@@ -199,10 +199,6 @@ class MavlinkUnit:
         self.model.update_yaw(yaw)
         self.__item += 1
         self.model.inprogress = False
-
-    def __landing_target(self):
-        self.model.landing()
-        self.__command_ack_send(21)
         
     def __message_handler(self):
         try:
@@ -234,17 +230,19 @@ class MavlinkUnit:
                                 else:
                                     self.__command_denied_send(msg.command)
                         elif msg.command == 21: # landing
-                            if not self.model.inprogress:
-                                if self.model.takeoff_status:
+                            if self.model.takeoff_status:
+                                if not self.model.inprogress:
                                     if not landing_once:
-                                        Thread(target=self.__landing_target).start()
+                                        Thread(target=self.model.landing).start()
                                         landing_once = True
                                 else:
-                                    if landing_once:
-                                        self.__command_ack_send(msg.command)
-                                        landing_once = False
-                                    else:
-                                        self.__command_denied_send(msg.command)
+                                    self.__comand_inprogress_send(msg.command)
+                            else:
+                                if landing_once:
+                                    self.__command_ack_send(msg.command)
+                                    landing_once = False
+                                else:
+                                    self.__command_denied_send(msg.command)
                         elif msg.command == 31010: # led control
                             self.model.set_color(msg.param2, msg.param3, msg.param4)
                             self.__command_ack_send(msg.command)

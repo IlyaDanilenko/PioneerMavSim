@@ -9,6 +9,7 @@ from PyQt5.QtGui import QFont
 from threading import Thread
 from time import sleep, time
 from math import sqrt
+from model import FireModel
 
 class SimulationSettings:
     def __init__(self, simulation : dict):
@@ -38,11 +39,11 @@ class SimulationSettingManager(SettingsManager):
         with open(self.__path, 'w') as f:
             json.dump(self.__raw_data, f)
 
-class FireModel:
-    def __init__(self, x = 0.0, y = 0.0, temp = 60.0):
-        self.x = x
-        self.y = y
-        self.temp = temp
+# class FireModel:
+#     def __init__(self, x = 0.0, y = 0.0, temp = 60.0):
+#         self.x = x
+#         self.y = y
+#         self.temp = temp
 
 class DroneModel:
     def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0, speed = 60):

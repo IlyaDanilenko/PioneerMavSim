@@ -24,10 +24,13 @@ class Language:
         pass
 
     def get_word(self, word : str, language = "rus"):
-        if language == "rus":
-            return self.words[word]
-        else:
-            return self.words.keys()[list(self.words.values()).index(word)]
+        try:
+            if language == "rus":
+                return self.words[word]
+            else:
+                return self.words.keys()[list(self.words.values()).index(word)]
+        except KeyError:
+            return word
 
 class SimulationSettings:
     def __init__(self, simulation : dict):
@@ -758,9 +761,8 @@ class StatusWidget(QWidget):
             layout.addWidget(drone_name)
             for name, value in status[index].items():
                 value_str = f'\t{Language().get_word(name)} : {Language().get_word(str(value))}'
-                label = QLabel(value_str)
-                self.__updateble_label.append(label)
-                layout.addWidget(label)
+                self.__updateble_label.append(QLabel(value_str))
+                layout.addWidget(self.__updateble_label[-1])
             status_widget.setLayout(layout)
             scroll_layout.addWidget(status_widget)
 
@@ -770,9 +772,11 @@ class StatusWidget(QWidget):
     def __update_label_target(self, type):
         while not self.isHidden():
             status = self.__server.get_status_info_by_type(type)
+            update_index = 0
             for index in range(len(status)):
                 for name, value in status[index].items():
-                    self.__updateble_label[index].setText(f'\t{Language().get_word(name)} : {Language().get_word(str(value))}')
+                    self.__updateble_label[update_index].setText(f'\t{Language().get_word(name)} : {Language().get_word(str(value))}')
+                    update_index += 1
             sleep(0.01)
 
     def open(self):

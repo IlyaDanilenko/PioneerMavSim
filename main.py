@@ -1,6 +1,6 @@
 import sys, json
 from enum import Enum
-from ObjectVisualizator.main import SettingsManager, VisWidget, VisualizationWorld
+from ObjectVisualizator.main import SettingsManager, VisWidget, VisualizationWorld, remapRGB
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QLabel, QLineEdit, QMessageBox, QScrollArea, QListWidgetItem, QDialog, QComboBox
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import common
@@ -9,6 +9,25 @@ from PyQt5.QtGui import QFont
 from threading import Thread
 from time import sleep, time
 from math import sqrt
+
+class Language:
+    words = {
+        "fire" : "Пожар",
+        "drone" : "Коптер",
+        "temp" : "Температура",
+        "arm" : "Двигатели заведены",
+        "True" : "Да",
+        "False" : "Нет"
+    }
+
+    def __init__(self):
+        pass
+
+    def get_word(self, word : str, language = "rus"):
+        if language == "rus":
+            return self.words[word]
+        else:
+            return self.words.keys()[list(self.words.values()).index(word)]
 
 class SimulationSettings:
     def __init__(self, simulation : dict):
@@ -43,6 +62,9 @@ class FireModel:
         self.x = x
         self.y = y
         self.temp = temp
+
+    def get_status(self) -> dict:
+        return {"temp" : self.temp}
 
 class DroneModel:
     def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0, speed = 60):
@@ -292,13 +314,19 @@ class MavlinkUnit:
         return self.model.color
 
     def get_position(self) -> tuple[float, float, float]:
-        return self.model.x, self.model.y, self.model.z
+        if self.model is not None:
+            return self.model.x, self.model.y, self.model.z
+        else:
+            return None, None, None
 
     def get_yaw(self) -> float:
         return self.model.yaw
 
     def get_start_position(self) -> tuple[float, float, float]:
         return self.__start_position
+
+    def get_status(self) -> dict:
+        return {"arm" : self.model.preflight_status or self.model.takeoff_status}
 
     def set_temp_data(self, temp = None):
         self.model.set_temp_sensor_data(temp)
@@ -318,8 +346,8 @@ class MavlinkUnit:
         self.__message_thread.start()
 
 class ModelType(Enum):
-    DRONE = ['drone', 'Коптер', MavlinkUnit]
-    FIRE = ['fire', 'Пожар', FireModel]
+    DRONE = ['drone', MavlinkUnit]
+    FIRE = ['fire', FireModel]
 
 class ObjectsManager():
     def __init__(self, visualization : VisualizationWorld, update_time = 0.0002):
@@ -336,10 +364,10 @@ class ObjectsManager():
     def add_fire(self, position : tuple):
         self.objects.append(FireModel(*position))
         self.visualization.add_model(ModelType.FIRE.value[0], (*position, 0.0), 0)
-        self.visualization.change_model_color(-1, 255, 0, 0)
+        self.visualization.change_model_color(-1, *remapRGB(200, 44, 31))
 
     def remove_objects(self, index : int):
-        if type(self.objects[index]) == ModelType.DRONE.value[2]:
+        if type(self.objects[index]) == ModelType.DRONE.value[1]:
             self.objects[index].online = False
         self.objects.pop(index)
         self.visualization.remove_model(index)
@@ -351,6 +379,13 @@ class ObjectsManager():
 
     def update_fire_info(self, index : int, position : tuple):
         self.visualization.change_model_position(index, (*position, 0), 0)
+
+    def get_status_info_by_type(self, model_type : ModelType) -> list:
+        status_data = []
+        for object in self.objects:
+            if type(object) == model_type.value[1]:
+                status_data.append(object.get_status())
+        return status_data
 
     def __drone_target(self, index : int):
         server = self.objects[index]
@@ -374,27 +409,28 @@ class ObjectsManager():
         fire = self.objects[index]
         while self.__run:
             for drone in self.objects:
-                if type(drone) == ModelType.DRONE.value[2]:
+                if type(drone) == ModelType.DRONE.value[1]:
                     drone_x, drone_y, _ = drone.get_position()
-                    if sqrt(abs(drone_x - fire.x)**2 + abs(drone_y - fire.y)**2) <= self.visualization.settings.simulation.fire_radius:
-                        drone.set_temp_data(fire.temp)
-                    else:
-                        drone.set_temp_data()
+                    if drone_x is not None:
+                        if sqrt(abs(drone_x - fire.x)**2 + abs(drone_y - fire.y)**2) <= self.visualization.settings.simulation.fire_radius:
+                            drone.set_temp_data(fire.temp)
+                        else:
+                            drone.set_temp_data()
             sleep(self.__update_time)
 
     def start(self):
         if not self.__run:
             self.__run = True
             for index in range(len(self.objects)):
-                if type(self.objects[index]) == ModelType.DRONE.value[2]:
+                if type(self.objects[index]) == ModelType.DRONE.value[1]:
                     self.objects[index].start()
                     Thread(target=self.__drone_target, args=(index, )).start()
-                elif type(self.objects[index]) == ModelType.FIRE.value[2]:
+                elif type(self.objects[index]) == ModelType.FIRE.value[1]:
                     Thread(target=self.__fire_target, args=(index, )).start()
 
     def close(self):
         for server in self.objects:
-            if type(server) == ModelType.DRONE.value[2]:
+            if type(server) == ModelType.DRONE.value[1]:
                 server.online = False
         self.__run = False
 
@@ -418,8 +454,8 @@ class ObjectDialog(QDialog):
             self.setGeometry(200, 200, 500, 50)
 
             combo = QComboBox()
-            combo.addItem(ModelType.DRONE.value[1])
-            combo.addItem(ModelType.FIRE.value[1])
+            combo.addItem(Language().get_word(ModelType.DRONE.value[0]))
+            combo.addItem(Language().get_word(ModelType.FIRE.value[0]))
             combo.activated[str].connect(self.__on_active)
 
             self.main_layout.addWidget(combo)
@@ -430,9 +466,9 @@ class ObjectDialog(QDialog):
         self.setLayout(self.main_layout)
 
     def __on_active(self, text):
-        if text == ModelType.DRONE.value[1]:
+        if text == Language().get_word(ModelType.DRONE.value[0]):
             self.__type = ModelType.DRONE
-        elif text == ModelType.FIRE.value[1]:
+        elif text == Language().get_word(ModelType.FIRE.value[0]):
             self.__type = ModelType.FIRE
 
         self.render_interface()
@@ -684,10 +720,74 @@ class MenuWidget(QWidget):
     def __remove_button_activate(self):
         self.remove_button.setEnabled(True)
 
+class StatusWidget(QWidget):
+    def __init__(self, server : ObjectsManager):
+        self.__server = server
+        super().__init__()
+
+        self.main_layout = QVBoxLayout(self)
+
+        self.__updateble_label = []
+        self.setGeometry(200, 200, 500, 500)
+        self.setWindowTitle("Статус")
+
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def update(self):
+        if self.main_layout.count() != 0:
+            self.main_layout.removeWidget(self.main_layout.itemAt(0).widget())
+        self.__updateble_label = []
+        scroll_layout = QVBoxLayout(self)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll_area = QScrollArea(self)
+        scroll_area.setContentsMargins(0, 0, 0, 0)
+
+        widget = QWidget(scroll_area)
+        widget.setLayout(scroll_layout)
+        widget.setContentsMargins(0, 0, 0, 0)
+
+        status = self.__server.get_status_info_by_type(ModelType.DRONE)
+
+        font = QFont("Times", 16)
+        for index in range(len(status)):
+            status_widget = QWidget(self)
+            layout = QVBoxLayout(status_widget)
+            drone_name = QLabel(f'{Language().get_word(ModelType.DRONE.value[0])} - {index + 1}')
+            drone_name.setFont(font)
+            layout.addWidget(drone_name)
+            for name, value in status[index].items():
+                value_str = f'\t{Language().get_word(name)} : {Language().get_word(str(value))}'
+                label = QLabel(value_str)
+                self.__updateble_label.append(label)
+                layout.addWidget(label)
+            status_widget.setLayout(layout)
+            scroll_layout.addWidget(status_widget)
+
+        scroll_area.setWidget(widget)
+        self.main_layout.addWidget(scroll_area)
+
+    def __update_label_target(self, type):
+        while not self.isHidden():
+            status = self.__server.get_status_info_by_type(type)
+            for index in range(len(status)):
+                for name, value in status[index].items():
+                    self.__updateble_label[index].setText(f'\t{Language().get_word(name)} : {Language().get_word(str(value))}')
+            sleep(0.01)
+
+    def open(self):
+        if self.isHidden():
+            self.show()
+            Thread(target=self.__update_label_target, args=(ModelType.DRONE,)).start()
+        else:
+            self.hide()
+
 class SimWidget(QWidget):
     def __init__(self, world, main, server, escape_callback):
         self.__escape_callback = escape_callback
         super().__init__()
+
+        self.status_widget = StatusWidget(server)
 
         self.vis_widget = VisWidget(world, main, server)
         self.vis_widget.setContentsMargins(0, 0, 0 , 100)
@@ -720,6 +820,10 @@ class SimWidget(QWidget):
             self.trajectory_button.setText("Показать траекторию")
         self.trajectory_button.clicked.connect(self.__trajectories_button_click)
 
+        self.status_button = QPushButton(self)
+        self.status_button.setText("Панель статусов")
+        self.status_button.clicked.connect(self.status_widget.open)
+
         buttons_group = QWidget(self)
         buttons_group_layout = QHBoxLayout(self)
         buttons_group_layout.setContentsMargins(5, 10, 5, 5)
@@ -729,6 +833,7 @@ class SimWidget(QWidget):
         buttons_group_layout.addWidget(self.left_up_button)
         buttons_group_layout.addWidget(self.left_down_button)
         buttons_group_layout.addWidget(self.trajectory_button)
+        buttons_group_layout.addWidget(self.status_button)
         buttons_group.setLayout(buttons_group_layout)
 
         self.main_layout = QVBoxLayout(self)
@@ -1006,6 +1111,7 @@ class SimulationWindow(QMainWindow):
                 self.objects_manager.update_fire_info(index, *data)
             
         self.objects_manager.start()
+        self.world_widget.status_widget.update()
         self.menu.hide()
         self.world_widget.show()
         self.menu.clearFocus()

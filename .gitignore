@@ -2,4 +2,5 @@ __pycache__
 save/*.json
 *.c
 *.so
+*.cpp
 build

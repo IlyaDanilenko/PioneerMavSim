@@ -209,9 +209,9 @@ class MavlinkUnit:
         )
 
     def __status_send(self):
-        self.master.mav.mission_item_reached_send(self.__item)
         self.master.mav.srcComponent = 26
         self.master.mav.local_position_ned_send(int(time()), self.model.x, self.model.y, self.model.z, 0, 0, 0)
+        self.master.mav.mission_item_reached_send(self.__item)
 
     def __distance_sensor_send(self, type):
         if type == common.MAV_DISTANCE_SENSOR_UNKNOWN:
@@ -232,9 +232,11 @@ class MavlinkUnit:
     def __live_handler(self):
         while self.online:
             self.__status_send()
+            sleep(self.heartbeat_rate / 3)
             self.__distance_sensor_send(common.MAV_DISTANCE_SENSOR_UNKNOWN)
+            sleep(self.heartbeat_rate / 3)
             self.__heartbeat_send()
-            sleep(self.heartbeat_rate)
+            sleep(self.heartbeat_rate / 3)
 
     def __command_ack_send(self, command : int):
         self.master.mav.command_ack_send(
@@ -310,7 +312,6 @@ class MavlinkUnit:
                             self.__command_ack_send(msg.command)
                     elif msg.get_type() == "SET_POSITION_TARGET_LOCAL_NED":
                         if not self.model.inprogress and self.model.check_pos(msg.x, msg.y, msg.z, msg.yaw):
-                            Thread(target=self.__go_to_point_target, args=(msg.x, msg.y, msg.z, msg.yaw)).start()
                             self.master.mav.srcComponent = 1
                             self.master.mav.position_target_local_ned_send(
                             time_boot_ms = 0,
@@ -327,7 +328,8 @@ class MavlinkUnit:
                             afz = msg.afz,
                             yaw_rate = msg.yaw_rate,
                             yaw = msg.yaw
-                        )
+                            )
+                            Thread(target=self.__go_to_point_target, args=(msg.x, msg.y, msg.z, msg.yaw)).start()
         except Exception as e:
             print(str(e))
             self.online = False

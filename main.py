@@ -149,9 +149,12 @@ class DroneModel:
         delta_z = z - self.z
         l = sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
         for _ in range(int(l * 100) - 1):
-            self.x += delta_x / l * 0.01
-            self.y += delta_y / l * 0.01
-            self.z += delta_z / l * 0.01
+            if self.inprogress:
+                self.x += delta_x / l * 0.01
+                self.y += delta_y / l * 0.01
+                self.z += delta_z / l * 0.01
+            else:
+                return
             sleep(1.0 / self.speed)
 
     def update_yaw(self, angle : float):
@@ -160,7 +163,10 @@ class DroneModel:
         if angle < 0.0:
             pri = -1
         for new_angle in range(old_angle, old_angle + int(angle), pri):
-            self.yaw = new_angle
+            if self.inprogress:
+                self.yaw = new_angle
+            else:
+                return
             sleep(1.0 / self.speed)
 
     def takeoff(self):
@@ -257,11 +263,15 @@ class MavlinkUnit:
         )
 
     def __go_to_point_target(self, x : float, y : float, z : float, yaw : float):
+        if self.model.inprogress:
+            self.model.inprogress = False
+            sleep(0.05)
         self.model.inprogress = True
         self.model.set_pos(x, y, z, yaw)
         self.model.go_to_point(x, y, z)
         self.model.update_yaw(yaw)
-        self.__item += 1
+        if self.model.inprogress:
+            self.__item += 1
         self.model.inprogress = False
         
     def __message_handler(self):
@@ -311,23 +321,23 @@ class MavlinkUnit:
                             self.model.set_color(msg.param2, msg.param3, msg.param4)
                             self.__command_ack_send(msg.command)
                     elif msg.get_type() == "SET_POSITION_TARGET_LOCAL_NED":
-                        if not self.model.inprogress and self.model.check_pos(msg.x, msg.y, msg.z, msg.yaw):
+                        if self.model.check_pos(msg.x, msg.y, msg.z, msg.yaw):
                             self.master.mav.srcComponent = 1
                             self.master.mav.position_target_local_ned_send(
-                            time_boot_ms = 0,
-                            coordinate_frame = msg.coordinate_frame,
-                            type_mask = msg.type_mask,
-                            x = msg.x,
-                            y = msg.y,
-                            z = msg.z,
-                            vx = msg.vx,
-                            vy = msg.vy,
-                            vz = msg.vz,
-                            afx = msg.afx,
-                            afy = msg.afy,
-                            afz = msg.afz,
-                            yaw_rate = msg.yaw_rate,
-                            yaw = msg.yaw
+                                time_boot_ms = 0,
+                                coordinate_frame = msg.coordinate_frame,
+                                type_mask = msg.type_mask,
+                                x = msg.x,
+                                y = msg.y,
+                                z = msg.z,
+                                vx = msg.vx,
+                                vy = msg.vy,
+                                vz = msg.vz,
+                                afx = msg.afx,
+                                afy = msg.afy,
+                                afz = msg.afz,
+                                yaw_rate = msg.yaw_rate,
+                                yaw = msg.yaw
                             )
                             Thread(target=self.__go_to_point_target, args=(msg.x, msg.y, msg.z, msg.yaw)).start()
         except Exception as e:

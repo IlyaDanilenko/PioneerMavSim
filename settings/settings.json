@@ -54,7 +54,14 @@
         }
     },
     "simulation": {
-        "speed": 60,
-        "fire_radius": 0.5
+        "drone": {
+            "speed": 60
+        },
+        "fire": {
+            "min_temp": 20.0,
+            "max_temp": 60.0,
+            "static": false,
+            "radius": 0.5
+        }
     }
 }

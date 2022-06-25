@@ -8,7 +8,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from threading import Thread
 from time import sleep, time
-from math import sqrt
+from math import sqrt, hypot
 
 class Language:
     words = {
@@ -17,7 +17,30 @@ class Language:
         "temp" : "Температура",
         "arm" : "Двигатели заведены",
         "True" : "Да",
-        "False" : "Нет"
+        "False" : "Нет",
+        "workspace" : "Рабочее пространство",
+        "polygon" : "Полигон",
+        "objects" : "Объекты",
+        "simulation" : "Симуляция",
+        "axis" : "Оси",
+        "sensitivity" : "Чувствительность",
+        "background" : "Фон",
+        "camera" : "Камера",
+        "position" : "Позиция",
+        "angle" : "Угол",
+        "trajectory" : "Траектория",
+        "need" : "Необходимость",
+        "marker" : "Маркер",
+        "distance" : "Расстояние",
+        "scale" : "Масштаб",
+        "color" : "Цвет",
+        "image_name" : "Путь до изображения",
+        "path" : "Путь",
+        "speed" : "Скорость",
+        "min_temp" : "Мин. Температура",
+        "max_temp" : "Макс. Температура",
+        "static" : "Статичность",
+        "radius" : "Радиус"
     }
 
     def __init__(self):
@@ -34,8 +57,11 @@ class Language:
 
 class SimulationSettings:
     def __init__(self, simulation : dict):
-        self.speed = simulation['speed']
-        self.fire_radius = simulation['fire_radius']
+        self.speed = simulation['drone']['speed']
+        self.fire_static = simulation['fire']['static']
+        self.fire_radius = simulation['fire']['radius']
+        self.fire_min_temp = simulation['fire']['min_temp']
+        self.fire_max_temp = simulation['fire']['max_temp']
 
 class SimulationSettingManager(SettingsManager):
     def __init__(self):
@@ -61,13 +87,30 @@ class SimulationSettingManager(SettingsManager):
             json.dump(self.__raw_data, f)
 
 class FireModel:
-    def __init__(self, x = 0.0, y = 0.0, temp = 60.0):
+    def __init__(self, x = 0.0, y = 0.0, min_temp = 20.0, max_temp = 60.0, radius = 0.5):
         self.x = x
         self.y = y
-        self.temp = temp
+        self.__min_temp = min_temp
+        self.__max_temp = max_temp
+        self.__radius = radius
 
     def get_status(self) -> dict:
         return {"temp" : self.temp}
+
+    def get_temp(self, position, static = True):
+        dist = lambda p1, p2: hypot((p2[0] - p1[0]), (p2[1] - p1[1]))
+
+        distance = dist(position, (self.x , self.y))
+
+        if distance >= self.__radius:
+            return self.__min_temp
+        else:
+            if static:
+                return self.__max_temp
+            else:
+                k = 1 - distance / self.__radius
+                t = k * (self.__max_temp - self.__min_temp)
+                return self.__min_temp + t
 
 class DroneModel:
     def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0, speed = 60):
@@ -77,7 +120,6 @@ class DroneModel:
         self.yaw = yaw
         self.speed = speed
         self.color = (0, 0, 0)
-        self.__default_temp_data = 20.0
         self.__temp_sensor_data = 20.0
 
         self.takeoff_status = False
@@ -88,13 +130,9 @@ class DroneModel:
     def set_color(self, r = 0, g = 0, b = 0):
         self.color = (r, g, b)
 
-    def set_temp_sensor_data(self, data = None):
-        if data is None:
-            if self.__temp_sensor_data != self.__default_temp_data:
-                self.__temp_sensor_data = self.__default_temp_data
-        else:
-            if self.__temp_sensor_data != data:
-                self.__temp_sensor_data = data
+    def set_temp_sensor_data(self, data : float):
+        if self.__temp_sensor_data != data:
+            self.__temp_sensor_data = data
 
     def get_temp_sensor_data(self) -> float:
         return self.__temp_sensor_data
@@ -148,7 +186,7 @@ class DroneModel:
         self.takeoff_status = False
 
 class MavlinkUnit:
-    def __init__(self, hostname='localhost', port=8001, start_position = (0, 0, 0), heartbeat_rate = 1/4, speed = 60):
+    def __init__(self, hostname='localhost', port=8001, start_position = (0, 0, 0), heartbeat_rate = 1/10, speed = 60):
         self.hostname = hostname
         self.online = False
         self.port = port
@@ -195,9 +233,8 @@ class MavlinkUnit:
         while self.online:
             self.__status_send()
             self.__distance_sensor_send(common.MAV_DISTANCE_SENSOR_UNKNOWN)
-            sleep(self.heartbeat_rate / 2)
             self.__heartbeat_send()
-            sleep(self.heartbeat_rate / 2)
+            sleep(self.heartbeat_rate)
 
     def __command_ack_send(self, command : int):
         self.master.mav.command_ack_send(
@@ -331,7 +368,7 @@ class MavlinkUnit:
     def get_status(self) -> dict:
         return {"arm" : self.model.preflight_status or self.model.takeoff_status}
 
-    def set_temp_data(self, temp = None):
+    def set_temp(self, temp : float):
         self.model.set_temp_sensor_data(temp)
 
     def start(self):
@@ -365,7 +402,12 @@ class ObjectsManager():
         self.visualization.add_model(ModelType.DRONE.value[0], start_position, 0)
 
     def add_fire(self, position : tuple):
-        self.objects.append(FireModel(*position))
+        self.objects.append(FireModel(
+            *position,
+            self.visualization.settings.simulation.fire_min_temp,
+            self.visualization.settings.simulation.fire_max_temp,
+            self.visualization.settings.simulation.fire_radius
+        ))
         self.visualization.add_model(ModelType.FIRE.value[0], (*position, 0.0), 0)
         self.visualization.change_model_color(-1, *remapRGB(200, 44, 31))
 
@@ -410,15 +452,15 @@ class ObjectsManager():
 
     def __fire_target(self, index : int):
         fire = self.objects[index]
+        static = self.visualization.settings.simulation.fire_static
         while self.__run:
             for drone in self.objects:
                 if type(drone) == ModelType.DRONE.value[1]:
                     drone_x, drone_y, _ = drone.get_position()
                     if drone_x is not None:
-                        if sqrt(abs(drone_x - fire.x)**2 + abs(drone_y - fire.y)**2) <= self.visualization.settings.simulation.fire_radius:
-                            drone.set_temp_data(fire.temp)
-                        else:
-                            drone.set_temp_data()
+                        temp = fire.get_temp((drone_x, drone_y), static)
+                        drone.set_temp(temp)
+
             sleep(self.__update_time)
 
     def start(self):
@@ -895,7 +937,7 @@ class SettingsMenuItemWidget(QWidget):
 
         widget = QWidget(scroll_area)
         widget.setLayout(self.scroll_layout)
-        widget.setContentsMargins(0, 0, 0, 0)
+        widget.setContentsMargins(10, 0, 10, 0)
 
         self._add_param(self.__data)
         scroll_area.setWidget(widget)
@@ -907,7 +949,7 @@ class SettingsMenuItemWidget(QWidget):
         for key in data_dict:
             font = QFont("Times", 24 // lavel)
             label = QLabel(self)
-            label.setText(key)
+            label.setText(Language().get_word(key))
             label.setFont(font)
             if type(data_dict[key]) == dict:
                 self.scroll_layout.addWidget(label)
@@ -977,7 +1019,7 @@ class SettingsMenuWidget(QWidget):
 
         for item in self.settings.__dict__().items():
             self.__widgets.append(SettingsMenuItemWidget(*item))
-            self.tab_widget.addTab(self.__widgets[-1], item[0])
+            self.tab_widget.addTab(self.__widgets[-1], Language().get_word(item[0]))
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)

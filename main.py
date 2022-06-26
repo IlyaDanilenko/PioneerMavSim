@@ -427,7 +427,7 @@ class ObjectsManager():
         for object in self.objects:
             if type(object) == ModelType.Fire.value[1]:
                 id += 1
-        id += 1
+
         self.objects.append(FireModel(
             id,
             *position,

@@ -566,7 +566,7 @@ class ObjectDialog(QDialog):
     def __save_click(self):
         fields = [field.text() for field in self.__field_inputs]
         if self.__type == ModelType.DRONE:
-            self.__fields = [str(fields[0]), int(fields[1]), (float(fields[2]), float(fields[3]), float(fields[4])), (float(fields[5]), float(fields[6]), float(fields[7]))]
+            self.__fields = [str(fields[0]), int(fields[1]), (float(fields[2]), float(fields[3]), float(fields[4])), (int(fields[5]), int(fields[6]), int(fields[7]))]
         elif self.__type == ModelType.FIRE:
             self.__fields = [(float(fields[0]), float(fields[1]))]
         self.close()

@@ -120,7 +120,7 @@ class DroneModel:
         self.yaw = yaw
         self.speed = speed
         self.color = (0, 0, 0)
-        self.__temp_sensor_data = 20.0
+        self.temp_sensor_data = 20.0
 
         self.takeoff_status = False
         self.preflight_status = False
@@ -129,13 +129,6 @@ class DroneModel:
 
     def set_color(self, r = 0, g = 0, b = 0):
         self.color = (r, g, b)
-
-    def set_temp_sensor_data(self, data : float):
-        if self.__temp_sensor_data != data:
-            self.__temp_sensor_data = data
-
-    def get_temp_sensor_data(self) -> float:
-        return self.__temp_sensor_data
 
     def check_pos(self, x : float, y : float, z : float, yaw : float) -> bool:
         return (x, y, z, yaw) != self.__last_position
@@ -221,7 +214,7 @@ class MavlinkUnit:
 
     def __distance_sensor_send(self, type):
         if type == common.MAV_DISTANCE_SENSOR_UNKNOWN:
-            distance = int(self.model.get_temp_sensor_data())
+            distance = int(self.model.temp_sensor_data)
         elif type == common.MAV_DISTANCE_SENSOR_LASER:
             distance = self.model.z
         self.master.mav.distance_sensor_send(
@@ -381,7 +374,7 @@ class MavlinkUnit:
         return {"arm" : self.model.preflight_status or self.model.takeoff_status}
 
     def set_temp(self, temp : float):
-        self.model.set_temp_sensor_data(temp)
+        self.model.temp_sensor_data = temp
 
     def start(self):
         self.model = DroneModel(*self.__start_position, speed = self.__speed)

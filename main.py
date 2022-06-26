@@ -425,7 +425,7 @@ class ObjectsManager():
     def add_fire(self, position : tuple):
         id = 0
         for object in self.objects:
-            if type(object) == ModelType.Fire.value[1]:
+            if type(object) == ModelType.FIRE.value[1]:
                 id += 1
 
         self.objects.append(FireModel(

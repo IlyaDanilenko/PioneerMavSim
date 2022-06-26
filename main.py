@@ -192,7 +192,7 @@ class DroneModel:
             return 20.0
         
     def set_temp(self, id, temp):
-        if len(self.__temp_sensor_data) != 0:
+        if id < len(self.__temp_sensor_data):
             self.__temp_sensor_data[id] = temp
         else:
             self.__temp_sensor_data.append(temp)
@@ -437,9 +437,6 @@ class ObjectsManager():
         ))
         self.visualization.add_model(ModelType.FIRE.value[0], (*position, 0.0), 0)
         self.visualization.change_model_color(-1, *remapRGB(200, 44, 31))
-        for index in range(len(self.objects)):
-            if type(self.objects[index]) == ModelType.DRONE.value[1]:
-                self.objects[index].set_temp(id, 20.0)
 
     def remove_objects(self, index : int):
         if type(self.objects[index]) == ModelType.DRONE.value[1]:
@@ -489,7 +486,7 @@ class ObjectsManager():
                     drone_x, drone_y, _ = self.objects[index].get_position()
                     if drone_x is not None:
                         temp = fire.get_temp((drone_x, drone_y), static)
-                        self.objects[index].model.set_temp(fire.id, temp)
+                        self.objects[index].set_temp(fire.id, temp)
 
             sleep(self.__update_time)
 

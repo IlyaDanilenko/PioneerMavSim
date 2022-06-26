@@ -373,9 +373,6 @@ class MavlinkUnit:
     def get_status(self) -> dict:
         return {"arm" : self.model.preflight_status or self.model.takeoff_status}
 
-    def set_temp(self, temp : float):
-        self.model.temp_sensor_data = temp
-
     def start(self):
         self.model = DroneModel(*self.__start_position, speed = self.__speed)
         self.master = mavutil.mavlink_connection(f'udpin:{self.hostname}:{self.port}', source_component=26, dialect = 'common')
@@ -464,7 +461,7 @@ class ObjectsManager():
                     drone_x, drone_y, _ = self.objects[index].get_position()
                     if drone_x is not None:
                         temp = fire.get_temp((drone_x, drone_y), static)
-                        self.objects[index].set_temp(temp)
+                        self.objects[index].model.temp_sensor_data = temp
 
             sleep(self.__update_time)
 

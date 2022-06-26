@@ -87,7 +87,8 @@ class SimulationSettingManager(SettingsManager):
             json.dump(self.__raw_data, f)
 
 class FireModel:
-    def __init__(self, x = 0.0, y = 0.0, min_temp = 20.0, max_temp = 60.0, radius = 0.5):
+    def __init__(self, id = 0, x = 0.0, y = 0.0, min_temp = 20.0, max_temp = 60.0, radius = 0.5):
+        self.id = id
         self.x = x
         self.y = y
         self.__min_temp = min_temp
@@ -120,7 +121,7 @@ class DroneModel:
         self.yaw = yaw
         self.speed = speed
         self.color = (0, 0, 0)
-        self.temp_sensor_data = 20.0
+        self.__temp_sensor_data = []
 
         self.takeoff_status = False
         self.preflight_status = False
@@ -183,6 +184,18 @@ class DroneModel:
         self.z = 0.0
         self.preflight_status = False
         self.takeoff_status = False
+       
+    def get_temp(self):
+        if len(self.__temp_sensor_data) != 0:
+            return max(self.__temp_sensor_data)
+        else:
+            return 20.0
+        
+    def set_temp(self, id, temp):
+        if len(self.__temp_sensor_data) != 0
+            self.__temp_sensor_data[id] = temp
+        else:
+            self.__temp_sensor_data.append(temp)
 
 class MavlinkUnit:
     def __init__(self, hostname='localhost', port=8001, start_position = (0, 0, 0), heartbeat_rate = 1/10, speed = 60):
@@ -214,7 +227,7 @@ class MavlinkUnit:
 
     def __distance_sensor_send(self, type):
         if type == common.MAV_DISTANCE_SENSOR_UNKNOWN:
-            distance = int(self.model.temp_sensor_data)
+            distance = int(self.model.get_temp())
         elif type == common.MAV_DISTANCE_SENSOR_LASER:
             distance = self.model.z
         self.master.mav.distance_sensor_send(
@@ -373,6 +386,12 @@ class MavlinkUnit:
     def get_status(self) -> dict:
         return {"arm" : self.model.preflight_status or self.model.takeoff_status}
 
+    def get_temp(self):
+        return self.model.get_temp()
+    
+    def set_temp(self, id, temp):
+        self.model.set_temp(id, temp)
+    
     def start(self):
         self.model = DroneModel(*self.__start_position, speed = self.__speed)
         self.master = mavutil.mavlink_connection(f'udpin:{self.hostname}:{self.port}', source_component=26, dialect = 'common')
@@ -404,7 +423,13 @@ class ObjectsManager():
         self.visualization.add_model(ModelType.DRONE.value[0], start_position, 0)
 
     def add_fire(self, position : tuple):
+        id = 0
+        for object in self.objects:
+            if type(object) == ModelType.Fire.value[1]:
+                id += 1
+        id += 1
         self.objects.append(FireModel(
+            id,
             *position,
             self.visualization.settings.simulation.fire_min_temp,
             self.visualization.settings.simulation.fire_max_temp,
@@ -412,6 +437,9 @@ class ObjectsManager():
         ))
         self.visualization.add_model(ModelType.FIRE.value[0], (*position, 0.0), 0)
         self.visualization.change_model_color(-1, *remapRGB(200, 44, 31))
+        for index in range(len(self.objects)):
+            if type(self.objects[index]) == ModelType.DRONE.value[1]:
+                self.objects[index].set_temp(id, self.objects[-1].get_temp())
 
     def remove_objects(self, index : int):
         if type(self.objects[index]) == ModelType.DRONE.value[1]:
@@ -461,7 +489,7 @@ class ObjectsManager():
                     drone_x, drone_y, _ = self.objects[index].get_position()
                     if drone_x is not None:
                         temp = fire.get_temp((drone_x, drone_y), static)
-                        self.objects[index].model.temp_sensor_data = temp
+                        self.objects[index].model.set_temp(fire.id, temp)
 
             sleep(self.__update_time)
 

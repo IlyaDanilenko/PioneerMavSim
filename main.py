@@ -95,6 +95,10 @@ class FireModel:
         self.__max_temp = max_temp
         self.__radius = radius
 
+    def set_position(self, x : float, y : float):
+        self.x = x
+        self.y = y
+
     def get_status(self) -> dict:
         return {"temp" : self.temp}
 
@@ -418,7 +422,7 @@ class ObjectsManager():
 
         self.__run = False
 
-    def add_server(self, hostname : str, port : int, start_position : tuple):
+    def add_server(self, hostname : str, port : int, start_position : tuple, color : tuple):
         self.objects.append(MavlinkUnit(hostname, port, start_position, speed=self.visualization.settings.simulation.speed))
         self.visualization.add_model(ModelType.DRONE.value[0], start_position, 0)
 
@@ -444,13 +448,14 @@ class ObjectsManager():
         self.objects.pop(index)
         self.visualization.remove_model(index)
 
-    def update_drone_info(self, index: int, hostname : str, port : int, position : tuple):
+    def update_drone_info(self, index: int, hostname : str, port : int, position : tuple, color : tuple):
         self.objects[index].set_start_position(*position)
         self.objects[index].set_hostname(hostname)
         self.objects[index].set_port(port)
 
     def update_fire_info(self, index : int, position : tuple):
         self.visualization.change_model_position(index, (*position, 0), 0)
+        self.objects[index].set_position(*position)
 
     def get_status_info_by_type(self, model_type : ModelType) -> list:
         status_data = []
@@ -547,8 +552,8 @@ class ObjectDialog(QDialog):
 
     def render_interface(self):
         if self.__type == ModelType.DRONE:
-            if len(self.__fields) != 3:
-                self.__fields = ["", 0, (0.0, 0.0, 0.0)]
+            if len(self.__fields) != 4:
+                self.__fields = ["", 0, (0.0, 0.0, 0.0), (0, 0, 0)]
             self.drone_interface(*self.__fields)
         elif self.__type == ModelType.FIRE:
             if len(self.__fields) != 1:
@@ -561,7 +566,7 @@ class ObjectDialog(QDialog):
     def __save_click(self):
         fields = [field.text() for field in self.__field_inputs]
         if self.__type == ModelType.DRONE:
-            self.__fields = [str(fields[0]), int(fields[1]), (float(fields[2]), float(fields[3]), float(fields[4]))]
+            self.__fields = [str(fields[0]), int(fields[1]), (float(fields[2]), float(fields[3]), float(fields[4])), (float(fields[5]), float(fields[6]), float(fields[7]))]
         elif self.__type == ModelType.FIRE:
             self.__fields = [(float(fields[0]), float(fields[1]))]
         self.close()
@@ -575,7 +580,7 @@ class ObjectDialog(QDialog):
                 self.main_layout.removeWidget(self.main_layout.itemAt(1).widget())
                 count = self.main_layout.count()
 
-    def drone_interface(self, hostname : str, port : int, position : tuple):
+    def drone_interface(self, hostname : str, port : int, position : tuple, color : tuple):
         self.remove_interfaces()
 
         hostname_widget = QWidget()
@@ -628,6 +633,36 @@ class ObjectDialog(QDialog):
         z_widget.setLayout(z_layout)
         self.__field_inputs.append(z_input)
 
+        r_widget = QWidget()
+        r_layout = QHBoxLayout(r_widget)
+        r_text = QLabel()
+        r_text.setText('Цвет траектории R')
+        r_input = QLineEdit(str(color[0]))
+        r_layout.addWidget(r_text)
+        r_layout.addWidget(r_input, 100)
+        r_widget.setLayout(r_layout)
+        self.__field_inputs.append(r_input)
+
+        g_widget = QWidget()
+        g_layout = QHBoxLayout(g_widget)
+        g_text = QLabel()
+        g_text.setText('Цвет траектории G')
+        g_input = QLineEdit(str(color[1]))
+        g_layout.addWidget(g_text)
+        g_layout.addWidget(g_input, 100)
+        g_widget.setLayout(g_layout)
+        self.__field_inputs.append(g_input)
+
+        b_widget = QWidget()
+        b_layout = QHBoxLayout(b_widget)
+        b_text = QLabel()
+        b_text.setText('Цвет траектории B')
+        b_input = QLineEdit(str(color[2]))
+        b_layout.addWidget(b_text)
+        b_layout.addWidget(b_input, 100)
+        b_widget.setLayout(b_layout)
+        self.__field_inputs.append(b_input)
+
         control = QWidget()
         control_layout = QGridLayout(control)
         cancel_button = QPushButton()
@@ -645,6 +680,9 @@ class ObjectDialog(QDialog):
         self.main_layout.addWidget(x_widget)
         self.main_layout.addWidget(y_widget)
         self.main_layout.addWidget(z_widget)
+        # self.main_layout.addWidget(r_widget)
+        # self.main_layout.addWidget(g_widget)
+        # self.main_layout.addWidget(b_widget)
         self.main_layout.addWidget(control)
 
     def fire_interface(self, position : tuple):
@@ -717,6 +755,7 @@ class MenuWidgetItem(QWidget):
 
     def __set_text(self):
         if self.__type == ModelType.DRONE:
+            # self.text.setText(f"TYPE: DRONE, HOSTNAME: {self.__field[0]}, PORT: {self.__field[1]}, START POSITION: {self.__field[2]}, TRAJECTORY COLOR: {self.__field[3]}")
             self.text.setText(f"TYPE: DRONE, HOSTNAME: {self.__field[0]}, PORT: {self.__field[1]}, START POSITION: {self.__field[2]}")
         elif self.__type == ModelType.FIRE:
             self.text.setText(f"TYPE: FIRE, POSITION: {self.__field[0]}")
@@ -770,8 +809,8 @@ class MenuWidget(QWidget):
         self.list.addItem(new_item)
         self.list.setItemWidget(new_item, widget)
 
-    def add_drone(self, hostname : str, port : int, start_position : tuple):
-        self.__add(MenuWidgetItem(ModelType.DRONE, [hostname, port, start_position]))
+    def add_drone(self, hostname : str, port : int, start_position : tuple, color : tuple):
+        self.__add(MenuWidgetItem(ModelType.DRONE, [hostname, port, start_position, color]))
 
     def add_fire(self, position: tuple):
         self.__add(MenuWidgetItem(ModelType.FIRE, [position]))
@@ -1116,7 +1155,8 @@ class SimulationWindow(QMainWindow):
                     type = data['type']
                     if type == ModelType.DRONE.value[0]:
                         position = (data['start_position']['x'], data['start_position']['y'], data['start_position']['z'])
-                        self.add_drone(data['hostname'], data['port'], position)
+                        color = (data['trajectory_color']['r'], data['trajectory_color']['g'], data['trajectory_color']['b'])
+                        self.add_drone(data['hostname'], data['port'], position, color)
                     elif type == ModelType.FIRE.value[0]:
                         position = (data['position']['x'], data['position']['y'])
                         self.add_fire(position)
@@ -1142,6 +1182,13 @@ class SimulationWindow(QMainWindow):
                     position_dict['z'] = data[2][2]
 
                     data_dict['start_position'] = position_dict
+
+                    color_dict = {}
+                    color_dict['r'] = data[3][0]
+                    color_dict['g'] = data[3][1]
+                    color_dict['b'] = data[3][2]
+
+                    data_dict['trajectory_color'] = color_dict
                 elif type == ModelType.FIRE:
                     position_dict = {}
                     position_dict['x'] = data[0][0]
@@ -1151,9 +1198,9 @@ class SimulationWindow(QMainWindow):
                 
             json.dump(save_list, f)
 
-    def add_drone(self, hostname : str, port : int, start_position = (0.0, 0.0, 0.0)):
-        self.menu.add_drone(hostname, port, start_position)
-        self.objects_manager.add_server(hostname, port, start_position)
+    def add_drone(self, hostname : str, port : int, start_position = (0.0, 0.0, 0.0), color = (0, 0, 0)):
+        self.menu.add_drone(hostname, port, start_position, color)
+        self.objects_manager.add_server(hostname, port, start_position, color)
 
     def add_fire(self, position = (0.0, 0.0)):
         self.menu.add_fire(position)

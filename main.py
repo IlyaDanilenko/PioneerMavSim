@@ -100,7 +100,7 @@ class FireModel:
         self.y = y
 
     def get_status(self) -> dict:
-        return {"temp" : self.temp}
+        return {"min_temp" : self.__min_temp, "max_temp" : self.__max_temp}
 
     def get_temp(self, position, static = True):
         dist = lambda p1, p2: hypot((p2[0] - p1[0]), (p2[1] - p1[1]))

@@ -439,7 +439,7 @@ class ObjectsManager():
         self.visualization.change_model_color(-1, *remapRGB(200, 44, 31))
         for index in range(len(self.objects)):
             if type(self.objects[index]) == ModelType.DRONE.value[1]:
-                self.objects[index].set_temp(id, self.objects[-1].get_temp())
+                self.objects[index].set_temp(id, 20.0)
 
     def remove_objects(self, index : int):
         if type(self.objects[index]) == ModelType.DRONE.value[1]:

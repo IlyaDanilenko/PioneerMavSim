@@ -466,12 +466,12 @@ class ObjectsManager():
         fire = self.objects[index]
         static = self.visualization.settings.simulation.fire_static
         while self.__run:
-            for drone in self.objects:
-                if type(drone) == ModelType.DRONE.value[1]:
-                    drone_x, drone_y, _ = drone.get_position()
+            for index in range(len(self.objects)):
+                if type(self.objects[index]) == ModelType.DRONE.value[1]:
+                    drone_x, drone_y, _ = self.objects[index].get_position()
                     if drone_x is not None:
                         temp = fire.get_temp((drone_x, drone_y), static)
-                        drone.set_temp(temp)
+                        self.objects[index].set_temp(temp)
 
             sleep(self.__update_time)
 

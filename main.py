@@ -566,7 +566,7 @@ class ObjectDialog(QDialog):
     def __save_click(self):
         fields = [field.text() for field in self.__field_inputs]
         if self.__type == ModelType.DRONE:
-            self.__fields = [str(fields[0]), int(fields[1]), (float(fields[2]), float(fields[3]), float(fields[4])), (int(fields[5]), int(fields[6]), int(fields[7]))]
+            self.__fields = [str(fields[0]), int(fields[1]), (float(fields[2]), float(fields[3]), float(fields[4])), (0, 0, 0)]
         elif self.__type == ModelType.FIRE:
             self.__fields = [(float(fields[0]), float(fields[1]))]
         self.close()
@@ -641,7 +641,7 @@ class ObjectDialog(QDialog):
         r_layout.addWidget(r_text)
         r_layout.addWidget(r_input, 100)
         r_widget.setLayout(r_layout)
-        self.__field_inputs.append(r_input)
+        # self.__field_inputs.append(r_input)
 
         g_widget = QWidget()
         g_layout = QHBoxLayout(g_widget)
@@ -651,7 +651,7 @@ class ObjectDialog(QDialog):
         g_layout.addWidget(g_text)
         g_layout.addWidget(g_input, 100)
         g_widget.setLayout(g_layout)
-        self.__field_inputs.append(g_input)
+        # self.__field_inputs.append(g_input)
 
         b_widget = QWidget()
         b_layout = QHBoxLayout(b_widget)
@@ -661,7 +661,7 @@ class ObjectDialog(QDialog):
         b_layout.addWidget(b_text)
         b_layout.addWidget(b_input, 100)
         b_widget.setLayout(b_layout)
-        self.__field_inputs.append(b_input)
+        # self.__field_inputs.append(b_input)
 
         control = QWidget()
         control_layout = QGridLayout(control)

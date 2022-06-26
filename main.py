@@ -192,7 +192,7 @@ class DroneModel:
             return 20.0
         
     def set_temp(self, id, temp):
-        if len(self.__temp_sensor_data) != 0
+        if len(self.__temp_sensor_data) != 0:
             self.__temp_sensor_data[id] = temp
         else:
             self.__temp_sensor_data.append(temp)

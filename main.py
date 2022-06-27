@@ -189,7 +189,7 @@ class DroneModel:
         self.preflight_status = False
         self.takeoff_status = False
        
-    def get_temp(self):
+    def get_temp(self) -> float:
         if len(self.__temp_sensor_data) != 0:
             return max(self.__temp_sensor_data)
         else:
@@ -390,7 +390,7 @@ class MavlinkUnit:
     def get_status(self) -> dict:
         return {"arm" : self.model.preflight_status or self.model.takeoff_status}
 
-    def get_temp(self):
+    def get_temp(self) -> float:
         return self.model.get_temp()
     
     def set_temp(self, id, temp):

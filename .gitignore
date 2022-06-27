@@ -4,3 +4,4 @@ save/*.json
 *.so
 *.cpp
 build
+*.pyd

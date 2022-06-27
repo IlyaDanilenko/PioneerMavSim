@@ -3,7 +3,20 @@
 from libcpp cimport bool
 from libc.math cimport sqrt, modf
 from cython.parallel import prange
-from time import sleep
+
+cdef extern from *:
+    """
+    #if defined(_WIN32) || defined(MS_WINDOWS) || defined(_MSC_VER)
+      #include "stdlib.h"
+      #define myapp_sleep(m)  _sleep(m)
+    #else
+      #include <unistd.h>
+      #define myapp_sleep(m)  ((void) usleep((m) * 1000))
+    #endif
+    """
+    # using "myapp_" prefix in the C code to prevent C naming conflicts
+    void sleep "myapp_sleep"(int milliseconds) nogil
+
 
 cdef class FireModel:
     cdef public float x
@@ -23,7 +36,7 @@ cdef class DroneModel:
     cdef public float y
     cdef public float z
     cdef public float yaw
-    cdef public float speed
+    cdef public int speed
     cdef public tuple color
     cdef float default_temp_data
     cdef float temp_sensor_data
@@ -78,28 +91,25 @@ cdef class DroneModel:
             self.x += delta_x / l * 0.01
             self.y += delta_y / l * 0.01
             self.z += delta_z / l * 0.01
-            with gil:
-                sleep(1.0 / self.speed)
+            sleep(1000 // self.speed)
 
     def update_yaw(self, angle : float):
         cdef int old_angle = int(self.yaw)
         cdef int pri = 1
         if angle < 0.0:
             pri = -1
-        cdef Py_ssize_t new_angle
+        cdef int new_angle
         cdef int n = old_angle + int(angle)
         for new_angle in prange(old_angle, n, pri, nogil = True):
-            self.yaw = (float)new_angle
-            with gil:
-                sleep(1.0 / self.speed)
+            self.yaw = float(new_angle)
+            sleep(1000 // self.speed)
 
     def takeoff(self):
         self.inprogress = True
         cdef Py_ssize_t i
         for i in prange(100, nogil = True):
             self.z += 0.01
-            with gil:
-                sleep(1.0 / self.speed)
+            sleep(1000 // self.speed)
         self.takeoff_status = True
         self.inprogress = False
 
@@ -109,8 +119,7 @@ cdef class DroneModel:
         cdef int n = int(self.z * 100)
         for i in prange(n, nogil = True):
             self.z -= 0.01
-            with gil:
-                sleep(1.0 / self.speed)
+            sleep(1000 // self.speed)
         self.takeoff_status = False
         self.preflight_status = False
         self.inprogress = False

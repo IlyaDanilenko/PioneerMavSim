@@ -275,7 +275,7 @@ class MavlinkUnit:
     def __go_to_point_target(self, x : float, y : float, z : float, yaw : float):
         if self.model.inprogress:
             self.model.inprogress = False
-            sleep(0.05)
+            sleep(0.025)
         self.model.inprogress = True
         self.model.set_pos(x, y, z, yaw)
         self.model.go_to_point(x, y, z)
@@ -424,7 +424,7 @@ class ObjectsManager():
 
     def add_server(self, hostname : str, port : int, start_position : tuple, color : tuple):
         self.objects.append(MavlinkUnit(hostname, port, start_position, speed=self.visualization.settings.simulation.speed))
-        self.visualization.add_model(ModelType.DRONE.value[0], start_position, 0)
+        self.visualization.add_model(ModelType.DRONE.value[0], start_position, 0, True, color)
 
     def add_fire(self, position : tuple):
         id = 0
@@ -439,7 +439,7 @@ class ObjectsManager():
             self.visualization.settings.simulation.fire_max_temp,
             self.visualization.settings.simulation.fire_radius
         ))
-        self.visualization.add_model(ModelType.FIRE.value[0], (*position, 0.0), 0)
+        self.visualization.add_model(ModelType.FIRE.value[0], (*position, 0.0), 0, False)
         self.visualization.change_model_color(-1, *remapRGB(200, 44, 31))
 
     def remove_objects(self, index : int):
@@ -452,6 +452,7 @@ class ObjectsManager():
         self.objects[index].set_start_position(*position)
         self.objects[index].set_hostname(hostname)
         self.objects[index].set_port(port)
+        self.visualization.change_trajectory_color(index, *remapRGB(*color))
 
     def update_fire_info(self, index : int, position : tuple):
         self.visualization.change_model_position(index, (*position, 0), 0)
@@ -566,7 +567,7 @@ class ObjectDialog(QDialog):
     def __save_click(self):
         fields = [field.text() for field in self.__field_inputs]
         if self.__type == ModelType.DRONE:
-            self.__fields = [str(fields[0]), int(fields[1]), (float(fields[2]), float(fields[3]), float(fields[4])), (0, 0, 0)]
+            self.__fields = [str(fields[0]), int(fields[1]), (float(fields[2]), float(fields[3]), float(fields[4])), (int(fields[5]), int(fields[6]), int(fields[7]))]
         elif self.__type == ModelType.FIRE:
             self.__fields = [(float(fields[0]), float(fields[1]))]
         self.close()
@@ -641,7 +642,7 @@ class ObjectDialog(QDialog):
         r_layout.addWidget(r_text)
         r_layout.addWidget(r_input, 100)
         r_widget.setLayout(r_layout)
-        # self.__field_inputs.append(r_input)
+        self.__field_inputs.append(r_input)
 
         g_widget = QWidget()
         g_layout = QHBoxLayout(g_widget)
@@ -651,7 +652,7 @@ class ObjectDialog(QDialog):
         g_layout.addWidget(g_text)
         g_layout.addWidget(g_input, 100)
         g_widget.setLayout(g_layout)
-        # self.__field_inputs.append(g_input)
+        self.__field_inputs.append(g_input)
 
         b_widget = QWidget()
         b_layout = QHBoxLayout(b_widget)
@@ -661,7 +662,7 @@ class ObjectDialog(QDialog):
         b_layout.addWidget(b_text)
         b_layout.addWidget(b_input, 100)
         b_widget.setLayout(b_layout)
-        # self.__field_inputs.append(b_input)
+        self.__field_inputs.append(b_input)
 
         control = QWidget()
         control_layout = QGridLayout(control)
@@ -680,9 +681,9 @@ class ObjectDialog(QDialog):
         self.main_layout.addWidget(x_widget)
         self.main_layout.addWidget(y_widget)
         self.main_layout.addWidget(z_widget)
-        # self.main_layout.addWidget(r_widget)
-        # self.main_layout.addWidget(g_widget)
-        # self.main_layout.addWidget(b_widget)
+        self.main_layout.addWidget(r_widget)
+        self.main_layout.addWidget(g_widget)
+        self.main_layout.addWidget(b_widget)
         self.main_layout.addWidget(control)
 
     def fire_interface(self, position : tuple):
@@ -755,8 +756,7 @@ class MenuWidgetItem(QWidget):
 
     def __set_text(self):
         if self.__type == ModelType.DRONE:
-            # self.text.setText(f"TYPE: DRONE, HOSTNAME: {self.__field[0]}, PORT: {self.__field[1]}, START POSITION: {self.__field[2]}, TRAJECTORY COLOR: {self.__field[3]}")
-            self.text.setText(f"TYPE: DRONE, HOSTNAME: {self.__field[0]}, PORT: {self.__field[1]}, START POSITION: {self.__field[2]}")
+            self.text.setText(f"TYPE: DRONE, HOSTNAME: {self.__field[0]}, PORT: {self.__field[1]}, START POSITION: {self.__field[2]}, TRAJECTORY COLOR: {self.__field[3]}")
         elif self.__type == ModelType.FIRE:
             self.text.setText(f"TYPE: FIRE, POSITION: {self.__field[0]}")
 

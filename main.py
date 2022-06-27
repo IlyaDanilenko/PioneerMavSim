@@ -457,12 +457,13 @@ class ObjectsManager():
         self.visualization.add_model(ModelType.FIRE.value[0], (*position, 0.0), 0, False)
         self.visualization.change_model_color(-1, *remapRGB(200, 44, 31))
 
-    def add_area(self, position : tuple, scale : tuple):
+    def add_area(self, position : tuple, scale : tuple, color : tuple):
         x, y, z = scale
         x, y, z = x, z, y
         self.objects.append(AreaModel(*position, scale))
         self.visualization.add_model(ModelType.AREA.value[0], (*position, 0.0), 0, False)
         self.visualization.change_model_scale(-1, (x, y, z))
+        self.visualization.change_model_color(-1, *remapRGB(*color))
 
     def remove_objects(self, index : int):
         if type(self.objects[index]) == ModelType.DRONE.value[1]:
@@ -480,11 +481,12 @@ class ObjectsManager():
         self.visualization.change_model_position(index, (*position, 0), 0)
         self.objects[index].set_position(*position)
 
-    def update_area_info(self, index : int, position : tuple, scale : tuple):
+    def update_area_info(self, index : int, position : tuple, scale : tuple, color : tuple):
         x, y, z = scale
         x, y, z = x, z, y
         self.visualization.change_model_position(index, (*position, 0), 0)
         self.visualization.change_model_scale(index, (x, y, z))
+        self.visualization.change_model_color(index,  *remapRGB(*color))
         self.objects[index].set_position(*position)
 
     def get_status_info_by_type(self, model_type : ModelType) -> list:
@@ -593,8 +595,8 @@ class ObjectDialog(QDialog):
                 self.__fields = [(0.0, 0.0)]
             self.fire_interface(*self.__fields)
         elif self.__type == ModelType.AREA:
-            if len(self.__fields) != 2:
-                self.__fields = [(0.0, 0.0), (0.0, 0.0, 0.0)]
+            if len(self.__fields) != 3:
+                self.__fields = [(0.0, 0.0), (0.0, 0.0, 0.0), (0, 0, 0)]
             self.area_interface(*self.__fields)
 
     def __cancel_click(self):
@@ -607,7 +609,7 @@ class ObjectDialog(QDialog):
         elif self.__type == ModelType.FIRE:
             self.__fields = [(float(fields[0]), float(fields[1]))]
         elif self.__type == ModelType.AREA:
-            self.__fields = [(float(fields[0]), float(fields[1])), (float(fields[2]), float(fields[3]), float(fields[4]))]
+            self.__fields = [(float(fields[0]), float(fields[1])), (float(fields[2]), float(fields[3]), float(fields[4])), (int(fields[5]), int(fields[6]), int(fields[7]))]
         self.close()
 
     def remove_interfaces(self):
@@ -763,7 +765,7 @@ class ObjectDialog(QDialog):
         self.main_layout.addWidget(y_widget)
         self.main_layout.addWidget(control)
 
-    def area_interface(self, position : tuple, scale : tuple):
+    def area_interface(self, position : tuple, scale : tuple, color : tuple):
         self.remove_interfaces()
 
         x_widget = QWidget()
@@ -816,6 +818,36 @@ class ObjectDialog(QDialog):
         s3_widget.setLayout(s3_layout)
         self.__field_inputs.append(s3_input)
 
+        r_widget = QWidget()
+        r_layout = QHBoxLayout(r_widget)
+        r_text = QLabel()
+        r_text.setText('Цвет R')
+        r_input = QLineEdit(str(color[0]))
+        r_layout.addWidget(r_text)
+        r_layout.addWidget(r_input, 100)
+        r_widget.setLayout(r_layout)
+        self.__field_inputs.append(r_input)
+
+        g_widget = QWidget()
+        g_layout = QHBoxLayout(g_widget)
+        g_text = QLabel()
+        g_text.setText('Цвет G')
+        g_input = QLineEdit(str(color[1]))
+        g_layout.addWidget(g_text)
+        g_layout.addWidget(g_input, 100)
+        g_widget.setLayout(g_layout)
+        self.__field_inputs.append(g_input)
+
+        b_widget = QWidget()
+        b_layout = QHBoxLayout(b_widget)
+        b_text = QLabel()
+        b_text.setText('Цвет B')
+        b_input = QLineEdit(str(color[2]))
+        b_layout.addWidget(b_text)
+        b_layout.addWidget(b_input, 100)
+        b_widget.setLayout(b_layout)
+        self.__field_inputs.append(b_input)
+
         control = QWidget()
         control_layout = QGridLayout(control)
         cancel_button = QPushButton()
@@ -833,6 +865,9 @@ class ObjectDialog(QDialog):
         self.main_layout.addWidget(s1_widget)
         self.main_layout.addWidget(s2_widget)
         self.main_layout.addWidget(s3_widget)
+        self.main_layout.addWidget(r_widget)
+        self.main_layout.addWidget(g_widget)
+        self.main_layout.addWidget(b_widget)
         self.main_layout.addWidget(control)        
 
     def exec_(self) -> list[str, list]:
@@ -870,7 +905,7 @@ class MenuWidgetItem(QWidget):
         elif self.__type == ModelType.FIRE:
             self.text.setText(f"TYPE: FIRE, POSITION: {self.__field[0]}")
         elif self.__type == ModelType.AREA:
-            self.text.setText(f"TYPE: AREA, POSITION: {self.__field[0]}, SCALE: {self.__field[1]}")
+            self.text.setText(f"TYPE: AREA, POSITION: {self.__field[0]}, SCALE: {self.__field[1]}, COLOR : {self.__field[2]}")
 
     def get_start_data(self) -> tuple:
         return self.__type, self.__field
@@ -927,8 +962,8 @@ class MenuWidget(QWidget):
     def add_fire(self, position: tuple):
         self.__add(MenuWidgetItem(ModelType.FIRE, [position]))
 
-    def add_area(self, position: tuple, scale : tuple):
-        self.__add(MenuWidgetItem(ModelType.AREA, [position, scale]))
+    def add_area(self, position: tuple, scale : tuple, color : tuple):
+        self.__add(MenuWidgetItem(ModelType.AREA, [position, scale, color]))
 
     def remove_current(self) -> int:
         row = self.list.currentRow()
@@ -1278,7 +1313,8 @@ class SimulationWindow(QMainWindow):
                     elif type == ModelType.AREA.value[0]:
                         position = (data['position']['x'], data['position']['y'])
                         scale = (data['scale']['x'], data['scale']['y'], data['scale']['z'])
-                        self.add_area(position, scale)
+                        color = (data['color']['r'], data['color']['g'], data['color']['b'])
+                        self.add_area(position, scale, color)
         except FileNotFoundError:
             pass
         except KeyError:
@@ -1328,6 +1364,13 @@ class SimulationWindow(QMainWindow):
                     scale_dict['y'] = data[1][1]
                     scale_dict['z'] = data[1][2]
                     data_dict['scale'] = scale_dict
+
+                    color_dict = {}
+                    color_dict['r'] = data[2][0]
+                    color_dict['g'] = data[2][1]
+                    color_dict['b'] = data[2][2]
+
+                    data_dict['color'] = color_dict
                 save_list.append(data_dict)
                 
             json.dump(save_list, f)
@@ -1340,9 +1383,9 @@ class SimulationWindow(QMainWindow):
         self.menu.add_fire(position)
         self.objects_manager.add_fire(position)
 
-    def add_area(self, position = (0.0, 0.0), scale = (0.0, 0.0, 0.0)):
-        self.menu.add_area(position, scale)
-        self.objects_manager.add_area(position, scale)
+    def add_area(self, position = (0.0, 0.0), scale = (0.0, 0.0, 0.0), color = (0, 0, 0)):
+        self.menu.add_area(position, scale, color)
+        self.objects_manager.add_area(position, scale, color)
 
     def __add_func(self):
         dialog = ObjectDialog()

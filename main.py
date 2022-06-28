@@ -44,15 +44,13 @@ class Language:
         "radius" : "Радиус"
     }
 
-    def __init__(self):
-        pass
-
-    def get_word(self, word : str, language = "rus"):
+    @classmethod
+    def get_word(cls, word : str, language = "rus"):
         try:
             if language == "rus":
-                return self.words[word]
+                return cls.words[word]
             else:
-                return self.words.keys()[list(self.words.values()).index(word)]
+                return cls.words.keys()[list(cls.words.values()).index(word)]
         except KeyError:
             return word
 
@@ -216,7 +214,7 @@ class DroneModel:
             self.__temp_sensor_data.append(temp)
 
 class MavlinkUnit:
-    def __init__(self, hostname='localhost', port=8001, start_position = (0, 0, 0), heartbeat_rate = 1/10, speed = 60):
+    def __init__(self, hostname='localhost', port=8001, start_position = (0, 0, 0), speed = 60, heartbeat_rate = 1/10):
         self.hostname = hostname
         self.online = False
         self.port = port
@@ -429,6 +427,16 @@ class ModelType(Enum):
     FIRE = ['fire', FireModel]
     AREA = ['area', AreaModel]
 
+    def __str__(self):
+        return self.value[0]
+
+    def model(self):
+        return self.value[1]
+
+    @classmethod
+    def get_str_list(cls):
+        return [str(cls[name]) for name in cls._member_names_]
+
 class ObjectsManager():
     def __init__(self, visualization : VisualizationWorld, update_time = 0.0002):
         self.visualization = visualization
@@ -437,66 +445,68 @@ class ObjectsManager():
 
         self.__run = False
 
-    def add_server(self, hostname : str, port : int, start_position : tuple, color : tuple):
-        self.objects.append(MavlinkUnit(hostname, port, start_position, speed=self.visualization.settings.simulation.speed))
-        self.visualization.add_model(ModelType.DRONE.value[0], start_position, 0, True, color)
-
-    def add_fire(self, position : tuple):
+    def count_by_type(self, model_type):
         id = 0
-        for object in self.objects:
-            if type(object) == ModelType.FIRE.value[1]:
+        for obj in self.objects:
+            if type(obj) == model_type.model():
                 id += 1
+        return id
 
-        self.objects.append(FireModel(
-            id,
-            *position,
-            self.visualization.settings.simulation.fire_min_temp,
-            self.visualization.settings.simulation.fire_max_temp,
-            self.visualization.settings.simulation.fire_radius
-        ))
-        self.visualization.add_model(ModelType.FIRE.value[0], (*position, 0.0), 0, False)
-        self.visualization.change_model_color(-1, *remapRGB(200, 44, 31))
-
-    def add_area(self, position : tuple, scale : tuple, color : tuple):
-        x, y, z = scale
-        x, y, z = x, z, y
-        self.objects.append(AreaModel(*position, scale))
-        self.visualization.add_model(ModelType.AREA.value[0], (*position, 0.0), 0, False)
-        self.visualization.change_model_scale(-1, (x, y, z))
-        self.visualization.change_model_color(-1, *remapRGB(*color))
+    def add_object(self, object_type : ModelType, fields : list):
+        if object_type == ModelType.DRONE:
+            self.visualization.add_model(str(ModelType.DRONE), fields[-2], 0, True, fields[-1])
+            self.objects.append(object_type.model()(*fields[0:-1], speed=self.visualization.settings.simulation.speed))
+        elif object_type == ModelType.FIRE:
+            id = self.count_by_type(ModelType.FIRE)
+            self.objects.append(object_type.model()(
+                id,
+                *fields[-1],
+                self.visualization.settings.simulation.fire_min_temp,
+                self.visualization.settings.simulation.fire_max_temp,
+                self.visualization.settings.simulation.fire_radius
+            ))
+            self.visualization.add_model(str(object_type), (*fields[-1], 0.0), 0, False)
+            self.visualization.change_model_color(-1, *remapRGB(200, 44, 31))
+        elif object_type == ModelType.AREA:
+            x, y, z = fields[-2]
+            x, y, z = x, z, y
+            self.objects.append(object_type.model()(*fields[0], fields[-2]))
+            self.visualization.add_model(str(object_type), (*fields[0], 0.0), 0, False)
+            self.visualization.change_model_scale(-1, (x, y, z))
+            self.visualization.change_model_color(-1, *remapRGB(*fields[-1]))
 
     def remove_objects(self, index : int):
-        if type(self.objects[index]) == ModelType.DRONE.value[1]:
+        if type(self.objects[index]) == ModelType.DRONE.model():
             self.objects[index].online = False
         self.objects.pop(index)
         self.visualization.remove_model(index)
 
-    def update_drone_info(self, index: int, hostname : str, port : int, position : tuple, color : tuple):
-        self.objects[index].set_start_position(*position)
-        self.objects[index].set_hostname(hostname)
-        self.objects[index].set_port(port)
-        self.visualization.change_trajectory_color(index, *remapRGB(*color))
-
-    def update_fire_info(self, index : int, position : tuple):
-        self.visualization.change_model_position(index, (*position, 0), 0)
-        self.objects[index].set_position(*position)
-
-    def update_area_info(self, index : int, position : tuple, scale : tuple, color : tuple):
-        x, y, z = scale
-        x, y, z = x, z, y
-        self.visualization.change_model_position(index, (*position, 0), 0)
-        self.visualization.change_model_scale(index, (x, y, z))
-        self.visualization.change_model_color(index,  *remapRGB(*color))
-        self.objects[index].set_position(*position)
+    def update_info(self, index : int, type : ModelType, fields : list):
+        if type == ModelType.DRONE:
+            self.objects[index].set_start_position(*fields[2])
+            self.objects[index].set_hostname(fields[0])
+            self.objects[index].set_port(fields[1])
+            self.visualization.change_trajectory_color(index, *remapRGB(*fields[-1]))
+        elif type == ModelType.FIRE:
+            self.visualization.change_model_position(index, (*fields[0], 0), 0)
+            self.objects[index].set_position(*fields[0])
+        elif type == ModelType.AREA:
+            x, y, z = fields[1]
+            x, y, z = x, z, y
+            self.visualization.change_model_position(index, (*fields[0], 0), 0)
+            self.visualization.change_model_scale(index, (x, y, z))
+            self.visualization.change_model_color(index,  *remapRGB(*fields[-1]))
+            self.objects[index].set_position(*fields[0])
 
     def get_status_info_by_type(self, model_type : ModelType) -> list:
         status_data = []
         for object in self.objects:
-            if type(object) == model_type.value[1]:
+            if type(object) == model_type.model():
                 status_data.append(object.get_status())
         return status_data
 
     def __drone_target(self, index : int):
+        self.objects[index].start()
         server = self.objects[index]
         while self.__run:
             new_position = server.get_position()
@@ -519,7 +529,7 @@ class ObjectsManager():
         static = self.visualization.settings.simulation.fire_static
         while self.__run:
             for index in range(len(self.objects)):
-                if type(self.objects[index]) == ModelType.DRONE.value[1]:
+                if type(self.objects[index]) == ModelType.DRONE.model():
                     drone_x, drone_y, _ = self.objects[index].get_position()
                     if drone_x is not None:
                         temp = fire.get_temp((drone_x, drone_y), static)
@@ -531,15 +541,14 @@ class ObjectsManager():
         if not self.__run:
             self.__run = True
             for index in range(len(self.objects)):
-                if type(self.objects[index]) == ModelType.DRONE.value[1]:
-                    self.objects[index].start()
+                if type(self.objects[index]) == ModelType.DRONE.model():
                     Thread(target=self.__drone_target, args=(index, )).start()
-                elif type(self.objects[index]) == ModelType.FIRE.value[1]:
+                elif type(self.objects[index]) == ModelType.FIRE.model():
                     Thread(target=self.__fire_target, args=(index, )).start()
 
     def close(self):
         for server in self.objects:
-            if type(server) == ModelType.DRONE.value[1]:
+            if type(server) == ModelType.DRONE.model():
                 server.online = False
         self.__run = False
 
@@ -563,9 +572,8 @@ class ObjectDialog(QDialog):
             self.setGeometry(200, 200, 500, 50)
 
             combo = QComboBox()
-            combo.addItem(Language().get_word(ModelType.DRONE.value[0]))
-            combo.addItem(Language().get_word(ModelType.FIRE.value[0]))
-            combo.addItem(Language().get_word(ModelType.AREA.value[0]))
+            for name in ModelType.get_str_list():
+                combo.addItem(Language.get_word(name))
             combo.activated[str].connect(self.__on_active)
 
             self.main_layout.addWidget(combo)
@@ -576,13 +584,9 @@ class ObjectDialog(QDialog):
         self.setLayout(self.main_layout)
 
     def __on_active(self, text):
-        if text == Language().get_word(ModelType.DRONE.value[0]):
-            self.__type = ModelType.DRONE
-        elif text == Language().get_word(ModelType.FIRE.value[0]):
-            self.__type = ModelType.FIRE
-        elif text == Language().get_word(ModelType.AREA.value[0]):
-            self.__type = ModelType.AREA
-
+        for model in ModelType:
+            if text == Language.get_word(str(model)):
+                self.__type = model
         self.render_interface()
 
     def render_interface(self):
@@ -950,20 +954,12 @@ class MenuWidget(QWidget):
 
         self.setLayout(self.main_layout)
 
-    def __add(self, widget):
+    def add_object(self, type : ModelType, fields : list):
+        widget = MenuWidgetItem(type, fields)
         new_item = QListWidgetItem()
         new_item.setSizeHint(widget.sizeHint()) 
         self.list.addItem(new_item)
         self.list.setItemWidget(new_item, widget)
-
-    def add_drone(self, hostname : str, port : int, start_position : tuple, color : tuple):
-        self.__add(MenuWidgetItem(ModelType.DRONE, [hostname, port, start_position, color]))
-
-    def add_fire(self, position: tuple):
-        self.__add(MenuWidgetItem(ModelType.FIRE, [position]))
-
-    def add_area(self, position: tuple, scale : tuple, color : tuple):
-        self.__add(MenuWidgetItem(ModelType.AREA, [position, scale, color]))
 
     def remove_current(self) -> int:
         row = self.list.currentRow()
@@ -1014,11 +1010,11 @@ class StatusWidget(QWidget):
         for index in range(len(status)):
             status_widget = QWidget(self)
             layout = QVBoxLayout(status_widget)
-            drone_name = QLabel(f'{Language().get_word(ModelType.DRONE.value[0])} - {index + 1}')
+            drone_name = QLabel(f'{Language.get_word(str(ModelType.DRONE))} - {index + 1}')
             drone_name.setFont(font)
             layout.addWidget(drone_name)
             for name, value in status[index].items():
-                value_str = f'\t{Language().get_word(name)} : {Language().get_word(str(value))}'
+                value_str = f'\t{Language.get_word(name)} : {Language.get_word(str(value))}'
                 self.__updateble_label.append(QLabel(value_str))
                 layout.addWidget(self.__updateble_label[-1])
             status_widget.setLayout(layout)
@@ -1033,7 +1029,7 @@ class StatusWidget(QWidget):
             update_index = 0
             for index in range(len(status)):
                 for name, value in status[index].items():
-                    self.__updateble_label[update_index].setText(f'\t{Language().get_word(name)} : {Language().get_word(str(value))}')
+                    self.__updateble_label[update_index].setText(f'\t{Language.get_word(name)} : {Language.get_word(str(value))}')
                     update_index += 1
             sleep(0.01)
 
@@ -1165,7 +1161,7 @@ class SettingsMenuItemWidget(QWidget):
         for key in data_dict:
             font = QFont("Times", 24 // lavel)
             label = QLabel(self)
-            label.setText(Language().get_word(key))
+            label.setText(Language.get_word(key))
             label.setFont(font)
             if type(data_dict[key]) == dict:
                 self.scroll_layout.addWidget(label)
@@ -1235,7 +1231,7 @@ class SettingsMenuWidget(QWidget):
 
         for item in self.settings.__dict__().items():
             self.__widgets.append(SettingsMenuItemWidget(*item))
-            self.tab_widget.addTab(self.__widgets[-1], Language().get_word(item[0]))
+            self.tab_widget.addTab(self.__widgets[-1], Language.get_word(item[0]))
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -1303,18 +1299,18 @@ class SimulationWindow(QMainWindow):
                 loaded_data = json.load(f)
                 for data in loaded_data:
                     type = data['type']
-                    if type == ModelType.DRONE.value[0]:
+                    if type == str(ModelType.DRONE):
                         position = (data['start_position']['x'], data['start_position']['y'], data['start_position']['z'])
                         color = (data['trajectory_color']['r'], data['trajectory_color']['g'], data['trajectory_color']['b'])
-                        self.add_drone(data['hostname'], data['port'], position, color)
-                    elif type == ModelType.FIRE.value[0]:
+                        self.add_object(ModelType.DRONE, [data['hostname'], data['port'], position, color])
+                    elif type == str(ModelType.FIRE):
                         position = (data['position']['x'], data['position']['y'])
-                        self.add_fire(position)
-                    elif type == ModelType.AREA.value[0]:
+                        self.add_object(ModelType.FIRE, [position])
+                    elif type == str(ModelType.AREA):
                         position = (data['position']['x'], data['position']['y'])
                         scale = (data['scale']['x'], data['scale']['y'], data['scale']['z'])
                         color = (data['color']['r'], data['color']['g'], data['color']['b'])
-                        self.add_area(position, scale, color)
+                        self.add_object(ModelType.AREA, [position, scale, color])
         except FileNotFoundError:
             pass
         except KeyError:
@@ -1330,7 +1326,7 @@ class SimulationWindow(QMainWindow):
             for index in range(len(items)):
                 type, data = items[index].get_start_data()
                 data_dict = {}
-                data_dict['type'] = type.value[0]
+                data_dict['type'] = str(type)
                 if type == ModelType.DRONE:
                     data_dict['hostname'] = data[0]
                     data_dict['port'] = data[1]
@@ -1375,28 +1371,18 @@ class SimulationWindow(QMainWindow):
                 
             json.dump(save_list, f)
 
-    def add_drone(self, hostname : str, port : int, start_position = (0.0, 0.0, 0.0), color = (0, 0, 0)):
-        self.menu.add_drone(hostname, port, start_position, color)
-        self.objects_manager.add_server(hostname, port, start_position, color)
-
-    def add_fire(self, position = (0.0, 0.0)):
-        self.menu.add_fire(position)
-        self.objects_manager.add_fire(position)
-
-    def add_area(self, position = (0.0, 0.0), scale = (0.0, 0.0, 0.0), color = (0, 0, 0)):
-        self.menu.add_area(position, scale, color)
-        self.objects_manager.add_area(position, scale, color)
+    def add_object(self, type : ModelType, fields : list):
+        self.menu.add_object(type, fields)
+        self.objects_manager.add_object(type, fields)
 
     def __add_func(self):
         dialog = ObjectDialog()
         type, fields = dialog.exec_()
         if type == ModelType.DRONE:
             if fields[0] != '':
-                self.add_drone(*fields)
-        elif type == ModelType.FIRE:
-            self.add_fire(fields[0])
-        elif type == ModelType.AREA:
-            self.add_area(*fields)
+                self.add_object(type, fields)
+        else:
+            self.add_object(type, fields)
 
     def __remove_func(self):
         index = self.menu.remove_current()
@@ -1408,12 +1394,7 @@ class SimulationWindow(QMainWindow):
         items = self.menu.get_items()
         for index in range(len(items)):
             type, data = items[index].get_start_data()
-            if type == ModelType.DRONE:
-                self.objects_manager.update_drone_info(index, *data)
-            elif type == ModelType.FIRE:
-                self.objects_manager.update_fire_info(index, *data)
-            elif type == ModelType.AREA:
-                self.objects_manager.update_area_info(index, *data)
+            self.objects_manager.update_info(index, type, data)
             
         self.objects_manager.start()
         self.world_widget.status_widget.update()

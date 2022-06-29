@@ -45,7 +45,8 @@ class Language:
         "power" : "Заряд",
         "battery_capacity" : "Емкость АКБ (mAh)",
         "battery_max" : "Напряжение АКБ (V)",
-        "battery_off" : "Мин. допустимое напряжение (V)"
+        "battery_off" : "Мин. допустимое напряжение (V)",
+        "battery_need" : "Учитывать ли разряд АКБ"
     }
 
     @classmethod
@@ -61,6 +62,7 @@ class Language:
 class SimulationSettings:
     def __init__(self, simulation : dict):
         self.speed = simulation['drone']['speed']
+        self.battery_need = simulation['drone']['battery_need']
         self.battery_capacity = simulation['drone']['battery_capacity']
         self.battery_max = simulation['drone']['battery_max']
         self.battery_off = simulation['drone']['battery_off']
@@ -137,7 +139,7 @@ class FireModel:
                 return self.__min_temp + t
 
 class DroneModel:
-    def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0, speed = 60, battery_capacity = 1300, battery_voltage = 7.2):
+    def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0, speed = 60, battery_need = True, battery_capacity = 1300, battery_voltage = 7.2):
         battery_time = battery_capacity * 27.7
         self.x = x
         self.y = y
@@ -155,7 +157,8 @@ class DroneModel:
         self.__max_battery = battery_time
         self.__battery_voltage = battery_voltage
 
-        Thread(target=self.__battery_target).start()
+        if battery_need:
+            Thread(target=self.__battery_target).start()
 
     def stop(self):
         self.__current_battery = -1
@@ -242,7 +245,7 @@ class DroneModel:
         return round(self.__current_battery / self.__max_battery * self.__battery_voltage, 1)
 
 class MavlinkUnit:
-    def __init__(self, hostname='localhost', port=8001, start_position = (0, 0, 0), speed = 60, battery_capacity = 1300, battery_max = 7.2, battery_off = 6.6, heartbeat_rate = 1/10):
+    def __init__(self, hostname='localhost', port=8001, start_position = (0, 0, 0), speed = 60, battery_need = True, battery_capacity = 1300, battery_max = 7.2, battery_off = 6.6, heartbeat_rate = 1/10):
         self.hostname = hostname
         self.online = False
         self.port = port
@@ -253,6 +256,7 @@ class MavlinkUnit:
         self.__live_thread = None
         self.__message_thread = None
         self.__speed = speed
+        self.__battery_need = battery_need
         self.__battery_capacity = battery_capacity
         self.__battery_max = battery_max
         self.__battery_off = battery_off
@@ -448,7 +452,7 @@ class MavlinkUnit:
         self.model.set_temp(id, temp)
     
     def start(self):
-        self.model = DroneModel(*self.__start_position, 0, self.__speed, self.__battery_capacity, self.__battery_max)
+        self.model = DroneModel(*self.__start_position, 0, self.__speed, self.__battery_need, self.__battery_capacity, self.__battery_max)
         self.master = mavutil.mavlink_connection(f'udpin:{self.hostname}:{self.port}', source_component=26, dialect = 'common')
         self.online = True
 
@@ -497,6 +501,7 @@ class ObjectsManager():
             self.objects.append(object_type.model()(
                 *fields[0:-1],
                 speed = self.visualization.settings.simulation.speed,
+                battery_need = self.visualization.settings.simulation.battery_need,
                 battery_capacity = self.visualization.settings.simulation.battery_capacity,
                 battery_max = self.visualization.settings.simulation.battery_max,
                 battery_off = self.visualization.settings.simulation.battery_off

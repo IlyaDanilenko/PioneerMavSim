@@ -41,7 +41,11 @@ class Language:
         "min_temp" : "Мин. Температура",
         "max_temp" : "Макс. Температура",
         "static" : "Статичность",
-        "radius" : "Радиус"
+        "radius" : "Радиус",
+        "power" : "Заряд",
+        "battery_capacity" : "Емкость АКБ (mAh)",
+        "battery_max" : "Напряжение АКБ (V)",
+        "battery_off" : "Мин. допустимое напряжение (V)"
     }
 
     @classmethod
@@ -57,6 +61,9 @@ class Language:
 class SimulationSettings:
     def __init__(self, simulation : dict):
         self.speed = simulation['drone']['speed']
+        self.battery_capacity = simulation['drone']['battery_capacity']
+        self.battery_max = simulation['drone']['battery_max']
+        self.battery_off = simulation['drone']['battery_off']
         self.fire_static = simulation['fire']['static']
         self.fire_radius = simulation['fire']['radius']
         self.fire_min_temp = simulation['fire']['min_temp']
@@ -130,7 +137,8 @@ class FireModel:
                 return self.__min_temp + t
 
 class DroneModel:
-    def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0, speed = 60):
+    def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0, speed = 60, battery_capacity = 1300, battery_voltage = 7.2):
+        battery_time = battery_capacity * 27.7
         self.x = x
         self.y = y
         self.z = z
@@ -138,11 +146,28 @@ class DroneModel:
         self.speed = speed
         self.color = (0, 0, 0)
         self.__temp_sensor_data = []
+        self.__current_battery = battery_time
 
         self.takeoff_status = False
         self.preflight_status = False
         self.inprogress = False
         self.__last_position = (x, y, z, yaw)
+        self.__max_battery = battery_time
+        self.__battery_voltage = battery_voltage
+
+        Thread(target=self.__battery_target).start()
+
+    def stop(self):
+        self.__current_battery = -1
+        
+    def __battery_target(self):
+        while self.__current_battery > 0.0:
+            if self.preflight_status:
+                self.__current_battery -= 1
+                sleep(1)
+            else:
+                self.__current_battery -= 0.5
+                sleep(1)
 
     def set_color(self, r = 0, g = 0, b = 0):
         self.color = (r, g, b)
@@ -213,8 +238,11 @@ class DroneModel:
         else:
             self.__temp_sensor_data.append(temp)
 
+    def get_battery(self) -> float:
+        return round(self.__current_battery / self.__max_battery * self.__battery_voltage, 1)
+
 class MavlinkUnit:
-    def __init__(self, hostname='localhost', port=8001, start_position = (0, 0, 0), speed = 60, heartbeat_rate = 1/10):
+    def __init__(self, hostname='localhost', port=8001, start_position = (0, 0, 0), speed = 60, battery_capacity = 1300, battery_max = 7.2, battery_off = 6.6, heartbeat_rate = 1/10):
         self.hostname = hostname
         self.online = False
         self.port = port
@@ -225,6 +253,9 @@ class MavlinkUnit:
         self.__live_thread = None
         self.__message_thread = None
         self.__speed = speed
+        self.__battery_capacity = battery_capacity
+        self.__battery_max = battery_max
+        self.__battery_off = battery_off
         self.__start_position = start_position
 
     def __heartbeat_send(self):
@@ -301,72 +332,80 @@ class MavlinkUnit:
             takeoff_once = False
             landing_once = False
             while self.online:
-                msg = self.master.recv_match(timeout=0.1)
-                if msg is not None:
-                    if msg.get_type() == "COMMAND_LONG":
-                        if msg.command == 400: # preflight and disarm
-                            if not self.model.preflight_status:
-                                self.__command_ack_send(msg.command)
-                                self.model.preflight_status = True
-                            else:
-                                self.model.disarm()
-                                self.__command_ack_send(msg.command)
-                        elif msg.command == 22: # takeoff
-                            if not self.model.takeoff_status:
-                                if not self.model.inprogress:
-                                    if not takeoff_once:
-                                        Thread(target=self.model.takeoff).start()
-                                        takeoff_once = True
-                                else:
-                                    self.__comand_inprogress_send(msg.command)
-                            else:
-                                if takeoff_once:
+                if self.model.get_battery() > self.__battery_off:
+                    msg = self.master.recv_match(timeout=0.1)
+                    if msg is not None:
+                        if msg.get_type() == "COMMAND_LONG":
+                            if msg.command == 400: # preflight and disarm
+                                if not self.model.preflight_status:
                                     self.__command_ack_send(msg.command)
-                                    takeoff_once = False
+                                    self.model.preflight_status = True
                                 else:
-                                    self.__command_denied_send(msg.command)
-                        elif msg.command == 21: # landing
-                            if self.model.takeoff_status:
-                                if not self.model.inprogress:
-                                    if not landing_once:
-                                        Thread(target=self.model.landing).start()
-                                        landing_once = True
-                                else:
-                                    self.__comand_inprogress_send(msg.command)
-                            else:
-                                if landing_once:
+                                    self.model.disarm()
                                     self.__command_ack_send(msg.command)
-                                    landing_once = False
+                            elif msg.command == 22: # takeoff
+                                if not self.model.takeoff_status:
+                                    if not self.model.inprogress:
+                                        if not takeoff_once:
+                                            Thread(target=self.model.takeoff).start()
+                                            takeoff_once = True
+                                    else:
+                                        self.__comand_inprogress_send(msg.command)
                                 else:
-                                    self.__command_denied_send(msg.command)
-                        elif msg.command == 31010: # led control
-                            self.model.set_color(msg.param2, msg.param3, msg.param4)
-                            self.__command_ack_send(msg.command)
-                    elif msg.get_type() == "SET_POSITION_TARGET_LOCAL_NED":
-                        if self.model.check_pos(msg.x, msg.y, msg.z, msg.yaw):
-                            self.master.mav.srcComponent = 1
-                            self.master.mav.position_target_local_ned_send(
-                                time_boot_ms = 0,
-                                coordinate_frame = msg.coordinate_frame,
-                                type_mask = msg.type_mask,
-                                x = msg.x,
-                                y = msg.y,
-                                z = msg.z,
-                                vx = msg.vx,
-                                vy = msg.vy,
-                                vz = msg.vz,
-                                afx = msg.afx,
-                                afy = msg.afy,
-                                afz = msg.afz,
-                                yaw_rate = msg.yaw_rate,
-                                yaw = msg.yaw
-                            )
-                            Thread(target=self.__go_to_point_target, args=(msg.x, msg.y, msg.z, msg.yaw)).start()
+                                    if takeoff_once:
+                                        self.__command_ack_send(msg.command)
+                                        takeoff_once = False
+                                    else:
+                                        self.__command_denied_send(msg.command)
+                            elif msg.command == 21: # landing
+                                if self.model.takeoff_status:
+                                    if not self.model.inprogress:
+                                        if not landing_once:
+                                            Thread(target=self.model.landing).start()
+                                            landing_once = True
+                                    else:
+                                        self.__comand_inprogress_send(msg.command)
+                                else:
+                                    if landing_once:
+                                        self.__command_ack_send(msg.command)
+                                        landing_once = False
+                                    else:
+                                        self.__command_denied_send(msg.command)
+                            elif msg.command == 31010: # led control
+                                self.model.set_color(msg.param2, msg.param3, msg.param4)
+                                self.__command_ack_send(msg.command)
+                        elif msg.get_type() == "SET_POSITION_TARGET_LOCAL_NED":
+                            if self.model.check_pos(msg.x, msg.y, msg.z, msg.yaw):
+                                self.master.mav.srcComponent = 1
+                                self.master.mav.position_target_local_ned_send(
+                                    time_boot_ms = 0,
+                                    coordinate_frame = msg.coordinate_frame,
+                                    type_mask = msg.type_mask,
+                                    x = msg.x,
+                                    y = msg.y,
+                                    z = msg.z,
+                                    vx = msg.vx,
+                                    vy = msg.vy,
+                                    vz = msg.vz,
+                                    afx = msg.afx,
+                                    afy = msg.afy,
+                                    afz = msg.afz,
+                                    yaw_rate = msg.yaw_rate,
+                                    yaw = msg.yaw
+                                )
+                                Thread(target=self.__go_to_point_target, args=(msg.x, msg.y, msg.z, msg.yaw)).start()
+                else:
+                    if self.model.inprogress:
+                        self.model.inprogress = False
+                        sleep(0.025)
+                    Thread(target=self.model.landing).start()
+                    break
         except Exception as e:
             print(str(e))
             self.online = False
-            print(f'{self.hostname}:{self.port} offline')
+        print(f'{self.hostname}:{self.port} offline')
         self.master.close()
+        self.model.stop()
 
     def set_speed(self, speed : int):
         if self.model is not None:
@@ -400,7 +439,7 @@ class MavlinkUnit:
         return self.__start_position
 
     def get_status(self) -> dict:
-        return {"arm" : self.model.preflight_status or self.model.takeoff_status}
+        return {"arm" : self.model.preflight_status or self.model.takeoff_status, 'power' : f'{self.model.get_battery()} V.'}
 
     def get_temp(self) -> float:
         return self.model.get_temp()
@@ -409,7 +448,7 @@ class MavlinkUnit:
         self.model.set_temp(id, temp)
     
     def start(self):
-        self.model = DroneModel(*self.__start_position, speed = self.__speed)
+        self.model = DroneModel(*self.__start_position, 0, self.__speed, self.__battery_capacity, self.__battery_max)
         self.master = mavutil.mavlink_connection(f'udpin:{self.hostname}:{self.port}', source_component=26, dialect = 'common')
         self.online = True
 
@@ -455,7 +494,13 @@ class ObjectsManager():
     def add_object(self, object_type : ModelType, fields : list):
         if object_type == ModelType.DRONE:
             self.visualization.add_model(str(ModelType.DRONE), fields[-2], 0, True, fields[-1])
-            self.objects.append(object_type.model()(*fields[0:-1], speed=self.visualization.settings.simulation.speed))
+            self.objects.append(object_type.model()(
+                *fields[0:-1],
+                speed = self.visualization.settings.simulation.speed,
+                battery_capacity = self.visualization.settings.simulation.battery_capacity,
+                battery_max = self.visualization.settings.simulation.battery_max,
+                battery_off = self.visualization.settings.simulation.battery_off
+            ))
         elif object_type == ModelType.FIRE:
             id = self.count_by_type(ModelType.FIRE)
             self.objects.append(object_type.model()(

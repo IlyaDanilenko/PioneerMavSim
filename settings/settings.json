@@ -55,7 +55,10 @@
     },
     "simulation": {
         "drone": {
-            "speed": 60
+            "speed": 60,
+            "battery_capacity": 1300,
+            "battery_max" : 7.2,
+            "battery_off" : 6.6
         },
         "fire": {
             "min_temp": 20.0,

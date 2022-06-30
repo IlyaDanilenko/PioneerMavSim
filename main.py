@@ -443,7 +443,10 @@ class MavlinkUnit:
         return self.__start_position
 
     def get_status(self) -> dict:
-        return {"arm" : self.model.preflight_status or self.model.takeoff_status, 'power' : f'{self.model.get_battery()} V.'}
+        if self.model is not None:
+            return {"arm" : self.model.preflight_status or self.model.takeoff_status, "power" : f'{self.model.get_battery()} V.'}
+        else:
+            return {"arm" : False, "power" : "0 V."}
 
     def get_temp(self) -> float:
         return self.model.get_temp()

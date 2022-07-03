@@ -678,8 +678,11 @@ class ObjectDialog(QDialog):
             return
         else:
             while count != 1:
-                self.main_layout.removeWidget(self.main_layout.itemAt(1).widget())
-                count = self.main_layout.count()
+                try:
+                    self.main_layout.removeWidget(self.main_layout.itemAt(1).widget())
+                    count = self.main_layout.count()
+                except:
+                    pass
 
     def drone_interface(self, hostname : str, port : int, position : tuple, color : tuple):
         self.remove_interfaces()

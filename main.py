@@ -223,13 +223,13 @@ class DroneModel:
         self.takeoff_status = False
         self.preflight_status = False
         self.inprogress = False
-        self.set_pos(self.x, self.y, 0.0)
+        self.set_pos(self.x, self.y, 0.0, self.yaw)
 
     def disarm(self):
         self.z = 0.0
         self.preflight_status = False
         self.takeoff_status = False
-        self.set_pos(self.x, self.y, 0.0)
+        self.set_pos(self.x, self.y, 0.0, self.yaw)
        
     def get_temp(self) -> float:
         if len(self.__temp_sensor_data) != 0:

@@ -332,6 +332,7 @@ class MavlinkUnit:
         if self.model.inprogress:
             self.__item += 1
         self.model.inprogress = False
+        self.model.set_pos(-1, -1, -1, -1)
         
     def __message_handler(self):
         try:
@@ -675,7 +676,7 @@ class ObjectDialog(QDialog):
         count = self.main_layout.count()
         if count == 1:
             return
-        elif count == 7 or count == 4:
+        else:
             while count != 1:
                 self.main_layout.removeWidget(self.main_layout.itemAt(1).widget())
                 count = self.main_layout.count()

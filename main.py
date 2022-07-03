@@ -660,6 +660,7 @@ class ObjectDialog(QDialog):
             self.area_interface(*self.__fields)
 
     def __cancel_click(self):
+        self.__fields = None
         self.close()
 
     def __save_click(self):
@@ -677,12 +678,9 @@ class ObjectDialog(QDialog):
         if count == 1:
             return
         else:
-            while count != 1:
-                try:
-                    self.main_layout.removeWidget(self.main_layout.itemAt(1).widget())
-                    count = self.main_layout.count()
-                except:
-                    pass
+            while count > 1:
+                self.main_layout.removeWidget(self.main_layout.itemAt(1).widget())
+                count = self.main_layout.count()
 
     def drone_interface(self, hostname : str, port : int, position : tuple, color : tuple):
         self.remove_interfaces()
@@ -959,8 +957,10 @@ class MenuWidgetItem(QWidget):
 
     def __button_click(self):
         dialog = ObjectDialog(self.__type, self.__field)
-        _, self.__field = dialog.exec_()
-        self.__set_text()
+        _, fields = dialog.exec_()
+        if fields is not None:
+            self.__set_text()
+            self.__field = fields
 
     def __set_text(self):
         if self.__type == ModelType.DRONE:
@@ -1437,11 +1437,12 @@ class SimulationWindow(QMainWindow):
     def __add_func(self):
         dialog = ObjectDialog()
         type, fields = dialog.exec_()
-        if type == ModelType.DRONE:
-            if fields[0] != '':
+        if fields is not None:
+            if type == ModelType.DRONE:
+                if fields[0] != '':
+                    self.add_object(type, fields)
+            else:
                 self.add_object(type, fields)
-        else:
-            self.add_object(type, fields)
 
     def __remove_func(self):
         index = self.menu.remove_current()

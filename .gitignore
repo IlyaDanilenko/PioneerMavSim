@@ -1,3 +1,4 @@
 __pycache__
 save/*.json
 test/gs_router
+.vscode

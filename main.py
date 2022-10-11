@@ -4,7 +4,7 @@ from ObjectVisualizator.main import SettingsManager, VisWidget, VisualizationWor
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QLabel, QLineEdit, QMessageBox, QScrollArea, QListWidgetItem, QDialog, QComboBox
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import common
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 from threading import Thread
 from time import sleep, time
@@ -974,7 +974,7 @@ class MenuWidgetItem(QWidget):
         return self.__type, self.__field
 
 class MenuWidget(QWidget):
-    def __init__(self, add_func, remove_func, sim_func, set_func):
+    def __init__(self):
         super().__init__()
 
         self.main_layout = QGridLayout(self)
@@ -985,20 +985,16 @@ class MenuWidget(QWidget):
 
         self.add_button = QPushButton(self)
         self.add_button.setText("Добавить объект")
-        self.add_button.clicked.connect(add_func)
 
         self.remove_button = QPushButton(self)
         self.remove_button.setText("Удалить объект")
         self.remove_button.setEnabled(False)
-        self.remove_button.clicked.connect(remove_func)
 
         self.sim_button = QPushButton(self)
         self.sim_button.setText("Включить симуляцию")
-        self.sim_button.clicked.connect(sim_func)
 
         self.set_button = QPushButton(self)
         self.set_button.setText("Настройки")
-        self.set_button.clicked.connect(set_func)
 
         buttons_group = QWidget(self)
         buttons_group_layout = QGridLayout(self)
@@ -1100,15 +1096,13 @@ class StatusWidget(QWidget):
             self.hide()
 
 class SimWidget(QWidget):
-    def __init__(self, world, main, server, escape_callback):
-        self.__escape_callback = escape_callback
+    def __init__(self, world, main, server):
         super().__init__()
 
         self.status_widget = StatusWidget(server)
 
         self.vis_widget = VisWidget(world, main, server)
         self.vis_widget.setContentsMargins(0, 0, 0 , 100)
-        self.vis_widget.close = self.__escape_callback
 
         self.center_button = QPushButton(self)
         self.center_button.setText("Центр сверху")
@@ -1264,9 +1258,10 @@ class SettingsMenuItemWidget(QWidget):
         return data_dict
 
 class SettingsMenuWidget(QWidget):
-    def __init__(self, settings, escape_callback):
+    escape = pyqtSignal(bool)
+
+    def __init__(self, settings):
         self.settings = settings
-        self.__escape_callback = escape_callback
         self.__widgets = []
         super().__init__()
 
@@ -1279,7 +1274,6 @@ class SettingsMenuWidget(QWidget):
 
         self.cancel_button = QPushButton(self)
         self.cancel_button.setText("Отменить")
-        self.cancel_button.clicked.connect(self.__escape_callback)
 
         buttons_group = QWidget(self)
         buttons_group_layout = QHBoxLayout(self)
@@ -1306,11 +1300,11 @@ class SettingsMenuWidget(QWidget):
         self.settings.update_from_dict(new_dict)
         QMessageBox.warning(self, "Внимание!", "Настройки будут применены только при следующем запуске")
         self.settings.write()
-        self.__escape_callback()
+        self.escape.emit(True)
 
     def keyReleaseEvent(self, event):
         if event.key() == Qt.Key_Escape:
-            self.__escape_callback()
+            self.escape.emit(True)
 
 class SimulationWindow(QMainWindow):
     def __init__(self, settings_path : str, save_path : str):
@@ -1329,15 +1323,22 @@ class SimulationWindow(QMainWindow):
 
         widgets = QStackedWidget(self)
 
-        self.world_widget = SimWidget(self.world, self, self.objects_manager, self.__back_to_menu)
+        self.world_widget = SimWidget(self.world, self, self.objects_manager)
+        self.world_widget.vis_widget.close = self.__back_to_menu
         self.world_widget.hide()
         self.world_widget.setGeometry(0, 0, self.width(), self.height())
 
-        self.settings_menu = SettingsMenuWidget(self.settings, self.__back_to_menu)
+        self.settings_menu = SettingsMenuWidget(self.settings)
+        self.settings_menu.cancel_button.clicked.connect(self.__back_to_menu)
+        self.settings_menu.escape.connect(self.__back_to_menu)
         self.settings_menu.setGeometry(0, 0, self.width(), self.height())
         self.settings_menu.hide()
 
-        self.menu = MenuWidget(self.__add_func, self.__remove_func, self.__start_sim, self.__open_setting)
+        self.menu = MenuWidget()
+        self.menu.add_button.clicked.connect(self.__add_func)
+        self.menu.remove_button.clicked.connect(self.__remove_func)
+        self.menu.sim_button.clicked.connect(self.__start_sim)
+        self.menu.set_button.clicked.connect(self.__open_setting)
         self.menu.show()
 
         widgets.addWidget(self.menu)

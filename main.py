@@ -411,6 +411,38 @@ class MavlinkUnit:
                                     yaw = msg.yaw
                                 )
                                 Thread(target=self.__go_to_point_target, args=(msg.x, msg.y, msg.z, msg.yaw)).start()
+                        elif msg.get_type() == "RC_CHANNELS_OVERRIDE":
+                            chanel1 = msg.chan1_raw
+                            chanel2 = msg.chan2_raw
+                            chanel3 = msg.chan3_raw
+                            chanel4 = msg.chan4_raw
+
+                            delta_x = 0.0
+                            delta_y = 0.0
+                            delta_z = 0.0
+                            delta_yaw = 0.0
+
+                            if chanel1 < 1500:
+                                delta_z = -0.05
+                            elif chanel1 > 1500:
+                                delta_z = 0.05
+
+                            if chanel2 < 1500:
+                                delta_yaw = -10
+                            elif chanel2 > 1500:
+                                delta_yaw = 10
+
+                            if chanel3 < 1500:
+                                delta_y = -0.05
+                            elif chanel3 > 1500:
+                                delta_y = 0.05
+
+                            if chanel4 < 1500:
+                                delta_x = -0.05
+                            elif chanel4 > 1500:
+                                delta_x = 0.05
+
+                            Thread(target=self.__go_to_point_target, args=(self.model.x + delta_x, self.model.y + delta_y, self.model.z + delta_z, self.model.yaw + delta_yaw)).start()
                 else:
                     if self.model.inprogress:
                         self.model.inprogress = False
@@ -500,7 +532,6 @@ class ObjectsManager(QObject):
     def __init__(self, visualization : VisualizationWorld, update_time = 0.0002):
         super().__init__()
         self.visualization = visualization
-        self.__update_time = update_time
         self.objects = []
 
         self.__run = False

@@ -4,7 +4,7 @@ from ObjectVisualizator.main import SettingsManager, VisWidget, VisualizationWor
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QListWidget, QPushButton, QInputDialog, QStackedWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QLabel, QLineEdit, QMessageBox, QScrollArea, QListWidgetItem, QDialog, QComboBox
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import common
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
 from threading import Thread
 from time import sleep, time
@@ -138,8 +138,12 @@ class FireModel:
                 t = k * (self.__max_temp - self.__min_temp)
                 return self.__min_temp + t
 
-class DroneModel:
+class DroneModel(QObject):
+    change_position = pyqtSignal()
+    change_color = pyqtSignal()
+
     def __init__(self, x = 0.0, y= 0.0, z = 0.0, yaw = 0.0, speed = 60, battery_need = True, battery_capacity = 1300, battery_voltage = 7.2):
+        super().__init__()
         battery_time = battery_capacity * 27.7
         self.x = x
         self.y = y
@@ -173,6 +177,7 @@ class DroneModel:
                 sleep(1)
 
     def set_color(self, r = 0, g = 0, b = 0):
+        self.change_color.emit()
         self.color = (r, g, b)
 
     def check_pos(self, x : float, y : float, z : float, yaw : float) -> bool:
@@ -191,6 +196,7 @@ class DroneModel:
                 self.x += delta_x / l * 0.01
                 self.y += delta_y / l * 0.01
                 self.z += delta_z / l * 0.01
+                self.change_position.emit()
             else:
                 return
             sleep(1.0 / self.speed)
@@ -203,6 +209,7 @@ class DroneModel:
         for new_angle in range(old_angle, old_angle + int(angle), pri):
             if self.inprogress:
                 self.yaw = new_angle
+                self.change_position.emit()
             else:
                 return
             sleep(1.0 / self.speed)
@@ -211,6 +218,7 @@ class DroneModel:
         self.inprogress = True
         for _ in range(100):
             self.z += 0.01
+            self.change_position.emit()
             sleep(1.0 / self.speed)
         self.takeoff_status = True
         self.inprogress = False
@@ -219,6 +227,7 @@ class DroneModel:
         self.inprogress = True
         for _ in range(int(self.z * 100)):
             self.z -= 0.01
+            self.change_position.emit()
             sleep(1.0 / self.speed)
         self.takeoff_status = False
         self.preflight_status = False
@@ -227,6 +236,7 @@ class DroneModel:
 
     def disarm(self):
         self.z = 0.0
+        self.change_position.emit()
         self.preflight_status = False
         self.takeoff_status = False
         self.set_pos(self.x, self.y, 0.0, self.yaw)
@@ -486,8 +496,9 @@ class ModelType(Enum):
     def get_str_list(cls):
         return [str(cls[name]) for name in cls._member_names_]
 
-class ObjectsManager():
+class ObjectsManager(QObject):
     def __init__(self, visualization : VisualizationWorld, update_time = 0.0002):
+        super().__init__()
         self.visualization = visualization
         self.__update_time = update_time
         self.objects = []
@@ -561,46 +572,50 @@ class ObjectsManager():
                 status_data.append(object.get_status())
         return status_data
 
-    def __drone_target(self, index : int):
-        self.objects[index].start()
-        server = self.objects[index]
-        while self.__run:
-            new_position = server.get_position()
-            new_yaw = server.get_yaw()
-            model_x, model_y, model_z, model_yaw = self.visualization.get_model_position(index)
-            if new_position != (model_x, model_y, model_z) or new_yaw != model_yaw:
-                self.visualization.change_model_position(index, new_position, new_yaw)
-            new_color = server.get_led_color()
-            model_color = self.visualization.get_model_color(index)
-            if new_color != model_color:
-                if not any(model_color):
-                    self.visualization.change_model_color(index)
-                else:
-                    self.visualization.change_model_color(index, *new_color)
+    def __get_index_by_model(self, model):
+        for index in range(len(self.objects)):
+            if (self.objects[index].model == model) and (type(self.objects[index]) == ModelType.DRONE.model()):
+                return index
+        return -1
+                
 
-            sleep(self.__update_time)
+    def __drone_change_position(self):
+        if self.__run:
+            index = self.__get_index_by_model(self.sender())
+            if index != -1:
+                position = self.objects[index].get_position()
+                self.visualization.change_model_position(
+                    index,
+                    position,
+                    self.objects[index].get_yaw()
+                )
+                for fire in [f for f in self.objects if type(f) == ModelType.FIRE.model()]:
+                    temp = fire.get_temp(
+                        tuple(position[0:2]),
+                        self.visualization.settings.simulation.fire_static
+                    )
+                    self.objects[index].set_temp(fire.id, temp)
 
-    def __fire_target(self, index : int):
-        fire = self.objects[index]
-        static = self.visualization.settings.simulation.fire_static
-        while self.__run:
-            for index in range(len(self.objects)):
-                if type(self.objects[index]) == ModelType.DRONE.model():
-                    drone_x, drone_y, _ = self.objects[index].get_position()
-                    if drone_x is not None:
-                        temp = fire.get_temp((drone_x, drone_y), static)
-                        self.objects[index].set_temp(fire.id, temp)
-
-            sleep(self.__update_time)
+    def __drone_change_color(self):
+        if self.__run:
+            index = self.__get_index_by_model(self.sender())
+            if index != -1:
+                new_color = self.objects[index].get_led_color()
+                model_color = self.visualization.get_model_color(index)
+                if new_color != model_color:
+                    if not any(model_color):
+                        self.visualization.change_model_color(index)
+                    else:
+                        self.visualization.change_model_color(index, *new_color)
 
     def start(self):
         if not self.__run:
             self.__run = True
             for index in range(len(self.objects)):
                 if type(self.objects[index]) == ModelType.DRONE.model():
-                    Thread(target=self.__drone_target, args=(index, )).start()
-                elif type(self.objects[index]) == ModelType.FIRE.model():
-                    Thread(target=self.__fire_target, args=(index, )).start()
+                    self.objects[index].start()
+                    self.objects[index].model.change_position.connect(self.__drone_change_position)
+                    self.objects[index].model.change_color.connect(self.__drone_change_color)
 
     def close(self):
         for server in self.objects:

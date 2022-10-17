@@ -8,7 +8,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
 from threading import Thread
 from time import sleep, time
-from math import sqrt, hypot
+from math import sqrt, hypot, cos, sin, radians
 
 class Language:
     words = {
@@ -212,6 +212,7 @@ class DroneModel(QObject):
                 self.change_position.emit()
             else:
                 return
+            print(self.yaw)
             sleep(1.0 / self.speed)
 
     def takeoff(self):
@@ -336,9 +337,9 @@ class MavlinkUnit:
             self.model.inprogress = False
             sleep(0.025)
         self.model.inprogress = True
+        self.model.update_yaw(yaw)
         self.model.set_pos(x, y, z, yaw)
         self.model.go_to_point(x, y, z)
-        self.model.update_yaw(yaw)
         if self.model.inprogress:
             self.__item += 1
         self.model.inprogress = False
@@ -422,25 +423,37 @@ class MavlinkUnit:
                             delta_z = 0.0
                             delta_yaw = 0.0
 
+                            drone_x = 0.0
+                            drone_y = 0.0
+
+                            if chanel2 < 1500:
+                                delta_yaw = -1
+                            elif chanel2 > 1500:
+                                delta_yaw = 1
+
+                            if chanel4 < 1500:
+                                drone_x = -0.05
+                            elif chanel4 > 1500:
+                                drone_x = 0.05
+
+                            if chanel3 < 1500:
+                                drone_y = -0.05
+                            elif chanel3 > 1500:
+                                drone_y = 0.05
+
+                            x1 = drone_y * sin(radians(self.model.yaw + delta_yaw))
+                            y1 = drone_y * cos(radians(self.model.yaw + delta_yaw))
+
+                            x2 = drone_x * cos(radians(self.model.yaw + delta_yaw))
+                            y2 = drone_x * sin(radians(self.model.yaw + delta_yaw))
+
+                            delta_x = x1 + x2
+                            delta_y = y1 + y2
+
                             if chanel1 < 1500:
                                 delta_z = -0.05
                             elif chanel1 > 1500:
                                 delta_z = 0.05
-
-                            if chanel2 < 1500:
-                                delta_yaw = -10
-                            elif chanel2 > 1500:
-                                delta_yaw = 10
-
-                            if chanel3 < 1500:
-                                delta_y = -0.05
-                            elif chanel3 > 1500:
-                                delta_y = 0.05
-
-                            if chanel4 < 1500:
-                                delta_x = -0.05
-                            elif chanel4 > 1500:
-                                delta_x = 0.05
 
                             Thread(target=self.__go_to_point_target, args=(self.model.x + delta_x, self.model.y + delta_y, self.model.z + delta_z, self.model.yaw + delta_yaw)).start()
                 else:

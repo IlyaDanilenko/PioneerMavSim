@@ -660,6 +660,8 @@ class ObjectsManager(QObject):
                     self.objects[index].start()
                     self.objects[index].model.change_position.connect(self.__drone_change_position)
                     self.objects[index].model.change_color.connect(self.__drone_change_color)
+                    self.objects[index].model.change_position.emit()
+                    self.objects[index].model.change_color.emit()
 
     def close(self):
         for server in self.objects:

@@ -212,7 +212,6 @@ class DroneModel(QObject):
                 self.change_position.emit()
             else:
                 return
-            print(self.yaw)
             sleep(1.0 / self.speed)
 
     def takeoff(self):
@@ -337,8 +336,8 @@ class MavlinkUnit:
             self.model.inprogress = False
             sleep(0.025)
         self.model.inprogress = True
-        self.model.update_yaw(yaw)
         self.model.set_pos(x, y, z, yaw)
+        self.model.update_yaw(yaw)
         self.model.go_to_point(x, y, z)
         if self.model.inprogress:
             self.__item += 1
@@ -413,10 +412,10 @@ class MavlinkUnit:
                                 )
                                 Thread(target=self.__go_to_point_target, args=(msg.x, msg.y, msg.z, msg.yaw)).start()
                         elif msg.get_type() == "RC_CHANNELS_OVERRIDE":
-                            chanel1 = msg.chan1_raw
-                            chanel2 = msg.chan2_raw
-                            chanel3 = msg.chan3_raw
-                            chanel4 = msg.chan4_raw
+                            channel_1 = msg.chan1_raw
+                            channel_2 = msg.chan2_raw
+                            channel_3 = msg.chan3_raw
+                            channel_4 = msg.chan4_raw
 
                             delta_x = 0.0
                             delta_y = 0.0
@@ -426,23 +425,23 @@ class MavlinkUnit:
                             drone_x = 0.0
                             drone_y = 0.0
 
-                            if chanel2 < 1500:
-                                delta_yaw = -1
-                            elif chanel2 > 1500:
-                                delta_yaw = 1
+                            if channel_2 < 1500:
+                                delta_yaw = 5
+                            elif channel_2 > 1500:
+                                delta_yaw = -5
 
-                            if chanel4 < 1500:
+                            if channel_4 < 1500:
                                 drone_x = -0.05
-                            elif chanel4 > 1500:
+                            elif channel_4 > 1500:
                                 drone_x = 0.05
 
-                            if chanel3 < 1500:
+                            if channel_3 < 1500:
                                 drone_y = -0.05
-                            elif chanel3 > 1500:
+                            elif channel_3 > 1500:
                                 drone_y = 0.05
 
-                            x1 = drone_y * sin(radians(self.model.yaw + delta_yaw))
-                            y1 = drone_y * cos(radians(self.model.yaw + delta_yaw))
+                            x1 = drone_y * sin(radians(360 - self.model.yaw + delta_yaw))
+                            y1 = drone_y * cos(radians(360 - self.model.yaw + delta_yaw))
 
                             x2 = drone_x * cos(radians(self.model.yaw + delta_yaw))
                             y2 = drone_x * sin(radians(self.model.yaw + delta_yaw))
@@ -450,12 +449,13 @@ class MavlinkUnit:
                             delta_x = x1 + x2
                             delta_y = y1 + y2
 
-                            if chanel1 < 1500:
+                            if channel_1 < 1500:
                                 delta_z = -0.05
-                            elif chanel1 > 1500:
+                            elif channel_1 > 1500:
                                 delta_z = 0.05
 
-                            Thread(target=self.__go_to_point_target, args=(self.model.x + delta_x, self.model.y + delta_y, self.model.z + delta_z, self.model.yaw + delta_yaw)).start()
+                            self.__go_to_point_target(self.model.x + delta_x, self.model.y + delta_y, self.model.z + delta_z, delta_yaw)
+                            sleep(0.0001)
                 else:
                     if self.model.inprogress:
                         self.model.inprogress = False

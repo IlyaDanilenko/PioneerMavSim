@@ -1,6 +1,10 @@
 import glob
+import platform
 
-plugin_list = [plugin.split('\\')[-1].replace('.py', '') for plugin in glob.glob(__file__.replace('__init__', '*'))]
+__separator = '/'
+if platform.system() == 'Windows':
+    __separator = '\\'
+plugin_list = [plugin.split(__separator)[-1].replace('.py', '') for plugin in glob.glob(__file__.replace('__init__', '*'))]
 plugin_list.remove('__init__')
 
 for plugin in plugin_list:

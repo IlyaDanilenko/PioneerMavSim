@@ -51,6 +51,14 @@ class FireModel(Model):
         return 'fire'
 
     @classmethod
+    def status(self) -> bool:
+        return False
+
+    @classmethod
+    def check_fields(self, fields):
+        return True
+
+    @classmethod
     def get_description(cls, field) -> str:
         return f"Позиция: {field[0]}"
 

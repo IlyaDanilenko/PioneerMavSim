@@ -47,6 +47,14 @@ class AreaModel(Model):
         return 'area'
 
     @classmethod
+    def status(self) -> bool:
+        return False
+
+    @classmethod
+    def check_fields(self, fields):
+        return True
+
+    @classmethod
     def get_description(cls, field) -> str:
         return f"Позиция: {field[0]}, Размер: {field[1]}, Цвет: {field[2]}"
 

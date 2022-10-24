@@ -426,6 +426,14 @@ class DroneMavlinkModel(Model):
         return 'drone'
 
     @classmethod
+    def status(self) -> bool:
+        return True
+
+    @classmethod
+    def check_fields(self, fields):
+        return fields[0] != ''
+
+    @classmethod
     def get_description(cls, field) -> str:
         return f"Хост: {field[0]}, Порт: {field[1]}, Стартовая позиция: {field[2]}, Цвет траектории: {field[3]}"
 

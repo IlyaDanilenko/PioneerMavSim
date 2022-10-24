@@ -23,6 +23,16 @@ class Model(ABC):
 
     @classmethod
     @abstractmethod
+    def status(self) -> bool:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def check_fields(self, fields):
+        pass
+
+    @classmethod
+    @abstractmethod
     def get_description(cls, field) -> str:
         pass
 

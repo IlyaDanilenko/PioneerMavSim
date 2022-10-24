@@ -51,11 +51,11 @@ class FireModel(Model):
         return 'fire'
 
     @classmethod
-    def status(self) -> bool:
+    def status(cls) -> bool:
         return False
 
     @classmethod
-    def check_fields(self, fields):
+    def check_fields(cls, fields) -> bool:
         return True
 
     @classmethod

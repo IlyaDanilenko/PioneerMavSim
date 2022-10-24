@@ -426,11 +426,11 @@ class DroneMavlinkModel(Model):
         return 'drone'
 
     @classmethod
-    def status(self) -> bool:
+    def status(cls) -> bool:
         return True
 
     @classmethod
-    def check_fields(self, fields):
+    def check_fields(cls, fields) -> bool:
         return fields[0] != ''
 
     @classmethod
